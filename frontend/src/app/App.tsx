@@ -2,9 +2,14 @@ import { useState, useEffect } from 'react';
 import { MeetingCard } from './components/MeetingCard';
 import { MeetingDetail } from './components/MeetingDetail';
 import { UploadModal } from './components/UploadModal';
+import { SignIn } from './components/SignIn';
 import { useAudioStream } from './hooks/useAudioStream';
-import { Plus, Mic2, Loader2 } from 'lucide-react';
-import { API_BASE_URL } from './lib/api';
+import { useAuth } from './contexts/AuthContext';
+import { Plus, Mic2, Loader2, LogOut, HelpCircle } from 'lucide-react';
+import { API_BASE_URL, authFetch } from './lib/api';
+import { Button } from './components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from './components/ui/alert';
 
 interface Meeting {
   id: string;
@@ -24,6 +29,34 @@ interface Meeting {
 }
 
 export default function App() {
+  const { user, session, loading: authLoading, signOut } = useAuth();
+
+  // If auth is still loading, show spinner
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  // If not signed in, show sign-in page
+  if (!session || !user) {
+    return <SignIn />;
+  }
+
+  return <AuthenticatedApp user={user} token={session.access_token} onSignOut={signOut} />;
+}
+
+/* ──────────── Authenticated app (only renders when signed in) ──────────── */
+
+interface AuthAppProps {
+  user: { email?: string };
+  token: string;
+  onSignOut: () => Promise<void>;
+}
+
+function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -34,18 +67,17 @@ export default function App() {
   useEffect(() => {
     const healthCheck = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL || ''}/health`);
+        const response = await authFetch(`${API_BASE_URL || ''}/health`, token);
         const data = await response.json();
         if (!data.ok) setBackendError('Backend health check failed.');
-      } catch (error) {
-        console.error('Backend health check failed:', error);
+      } catch {
         setBackendError('Backend not reachable. Start it with: cd backend && python app.py');
       } finally {
         setIsLoading(false);
       }
     };
     healthCheck();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     fetchMeetings();
@@ -53,18 +85,8 @@ export default function App() {
 
   const fetchMeetings = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL || ''}/meetings`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Fetch meetings error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData
-        });
-        throw new Error(errorData.error || `Failed to fetch meetings (${response.status})`);
-      }
-
+      const response = await authFetch(`${API_BASE_URL || ''}/meetings`, token);
+      if (!response.ok) throw new Error('Failed to fetch meetings');
       const data = await response.json();
       setMeetings(data.meetings || []);
     } catch (error) {
@@ -77,85 +99,44 @@ export default function App() {
     formData.append('title', title);
     formData.append('audio', file);
 
-    try {
-      const response = await fetch(`${API_BASE_URL || ''}/meetings`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Upload error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData
-        });
-        throw new Error(errorData.error || `Upload failed (${response.status})`);
-      }
-
-      const data = await response.json();
-      const newMeeting = data.meeting;
-
-      // Add meeting to list
-      setMeetings(prev => [newMeeting, ...prev]);
-
-      // Trigger AI processing with Deepgram
-      console.log('Starting Deepgram AI processing for meeting:', newMeeting.id);
-      
-      // Start processing in background
-      fetch(`${API_BASE_URL || ''}/meetings/${newMeeting.id}/process`, {
-        method: 'POST',
-      })
-        .then(async (processResponse) => {
-          if (!processResponse.ok) {
-            const errorData = await processResponse.json().catch(() => ({ error: 'Unknown error' }));
-            console.error('Processing error:', errorData);
-            // Update meeting with error status
-            setMeetings(prev => prev.map(m => 
-              m.id === newMeeting.id 
-                ? { ...m, processed: false, error: errorData.error || 'Processing failed' }
-                : m
-            ));
-            return;
-          }
-
-          const { meeting: processedMeeting } = await processResponse.json();
-          console.log('AI processing completed successfully:', processedMeeting);
-          
-          // Update meeting with AI results
-          setMeetings(prev => prev.map(m => 
-            m.id === processedMeeting.id ? processedMeeting : m
-          ));
-        })
-        .catch((error) => {
-          console.error('Processing error:', error);
-          setMeetings(prev => prev.map(m => 
-            m.id === newMeeting.id 
-              ? { ...m, processed: false, error: 'Failed to process audio with AI' }
-              : m
-          ));
-        });
-
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
+    const response = await authFetch(`${API_BASE_URL || ''}/meetings`, token, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `Upload failed (${response.status})`);
     }
+    const data = await response.json();
+    const newMeeting = data.meeting;
+    setMeetings(prev => [newMeeting, ...prev]);
+
+    // Trigger AI processing in background
+    authFetch(`${API_BASE_URL || ''}/meetings/${newMeeting.id}/process`, token, { method: 'POST' })
+      .then(async (res) => {
+        if (!res.ok) {
+          const ed = await res.json().catch(() => ({ error: 'Processing failed' }));
+          setMeetings(prev => prev.map(m =>
+            m.id === newMeeting.id ? { ...m, processed: false, error: ed.error || 'Processing failed' } : m
+          ));
+          return;
+        }
+        const { meeting: pm } = await res.json();
+        setMeetings(prev => prev.map(m => m.id === pm.id ? pm : m));
+      })
+      .catch(() => {
+        setMeetings(prev => prev.map(m =>
+          m.id === newMeeting.id ? { ...m, processed: false, error: 'Failed to process audio with AI' } : m
+        ));
+      });
   };
 
   const handleDeleteMeeting = async (meetingId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL || ''}/meetings/${meetingId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete meeting');
-      }
-
+      const response = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}`, token, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete meeting');
       setMeetings(prev => prev.filter(m => m.id !== meetingId));
-      if (selectedMeetingId === meetingId) {
-        setSelectedMeetingId(null);
-      }
+      if (selectedMeetingId === meetingId) setSelectedMeetingId(null);
     } catch (error) {
       console.error('Delete error:', error);
     }
@@ -163,15 +144,9 @@ export default function App() {
 
   const handleSelectMeeting = async (meetingId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL || ''}/meetings/${meetingId}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch meeting details');
-      }
-
+      const response = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}`, token);
+      if (!response.ok) throw new Error('Failed to fetch meeting details');
       const { meeting } = await response.json();
-      
-      // Update the meeting in the list with the audio URL
       setMeetings(prev => prev.map(m => m.id === meeting.id ? meeting : m));
       setSelectedMeetingId(meetingId);
     } catch (error) {
@@ -181,114 +156,83 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
-        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-primary animate-spin" />
       </div>
     );
   }
 
-  const selectedMeeting = selectedMeetingId 
+  const selectedMeeting = selectedMeetingId
     ? meetings.find(m => m.id === selectedMeetingId)
     : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      {/* Backend Error Banner */}
+    <div className="min-h-screen bg-background relative">
       {backendError && (
-        <div className="bg-red-500 text-white px-4 py-3 text-center">
-          <p className="text-sm">⚠️ {backendError} - The backend may not be deployed yet. Check console for details.</p>
-        </div>
+        <Alert variant="destructive" className="rounded-none">
+          <AlertTitle>Backend unavailable</AlertTitle>
+          <AlertDescription>
+            {backendError} — The backend may not be deployed yet. Check console for details.
+          </AlertDescription>
+        </Alert>
       )}
-      
+
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="bg-card border-b border-border/60">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500 rounded-lg">
-              <Mic2 className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+              <Mic2 className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-xl text-gray-900">Meeting Insights</h1>
-              <p className="text-sm text-gray-600">Local backend (no Supabase)</p>
+              <h1 className="text-lg font-semibold text-foreground leading-tight">Meeting Insights</h1>
+              <p className="text-sm text-muted-foreground">Welcome back, {user.email}</p>
             </div>
           </div>
+          <button
+            onClick={onSignOut}
+            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-8">
         {selectedMeeting ? (
-          <MeetingDetail 
-            meeting={selectedMeeting} 
-            onBack={() => setSelectedMeetingId(null)} 
+          <MeetingDetail
+            meeting={selectedMeeting}
+            onBack={() => setSelectedMeetingId(null)}
           />
         ) : (
           <>
-            {/* Actions */}
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-2xl text-gray-900 mb-1">Your Meetings</h2>
-                <p className="text-gray-600">
+                <h2 className="text-2xl font-bold text-foreground mb-0.5">Your Meetings</h2>
+                <p className="text-muted-foreground text-sm">
                   {meetings.length} {meetings.length === 1 ? 'recording' : 'recordings'} total
                 </p>
               </div>
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-md hover:shadow-lg"
-              >
+              <Button onClick={() => setShowUploadModal(true)} size="lg" className="rounded-lg px-6 shadow-sm">
                 <Plus className="w-5 h-5" />
                 Upload Meeting
-              </button>
+              </Button>
             </div>
 
-            {/* Live transcript (Flask backend on port 5000 via Vite proxy) */}
-            <section className="mb-8 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">Live transcript</h2>
-              <p className="text-sm text-gray-600 mb-3">Real-time speech-to-text via the local backend (Deepgram).</p>
-              <div className="flex flex-wrap items-center gap-3 mb-3">
-                {!isRecording ? (
-                  <button
-                    type="button"
-                    onClick={startRecording}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    <Mic2 className="w-4 h-4" />
-                    Start recording
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={stopRecording}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    Stop recording
-                  </button>
-                )}
-              </div>
-              {transcriptError && (
-                <p className="text-sm text-red-600 mb-2" role="alert">{transcriptError}</p>
-              )}
-              <div className="min-h-[4rem] rounded-lg bg-gray-50 p-3 text-gray-700">
-                {transcript ? transcript : (isRecording ? 'Listening…' : 'Start recording to see the transcript here.')}
-              </div>
-            </section>
-
-            {/* Meetings Grid */}
             {meetings.length === 0 ? (
-              <div className="text-center py-16">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                  <Mic2 className="w-8 h-8 text-blue-500" />
+              <div className="rounded-2xl bg-[#eeeafd]/40 py-24 flex flex-col items-center justify-center">
+                <div className="w-16 h-16 bg-[#ddd6fe] rounded-full flex items-center justify-center mb-5">
+                  <Mic2 className="w-7 h-7 text-primary" />
                 </div>
-                <h3 className="text-xl text-gray-900 mb-2">No meetings yet</h3>
-                <p className="text-gray-600 mb-6">
+                <h3 className="text-xl font-semibold text-foreground mb-2">No meetings yet</h3>
+                <p className="text-muted-foreground mb-6 text-sm">
                   Upload your first meeting recording to get started
                 </p>
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                >
+                <Button onClick={() => setShowUploadModal(true)} size="lg" className="rounded-lg px-6">
                   <Plus className="w-5 h-5" />
                   Upload Meeting
-                </button>
+                </Button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -302,17 +246,53 @@ export default function App() {
                 ))}
               </div>
             )}
+
+            {/* Live Transcript */}
+            <Card className="mt-10">
+              <CardHeader>
+                <CardTitle className="text-lg">Live Transcript</CardTitle>
+                <p className="text-sm text-muted-foreground">Real-time speech-to-text via the local backend (Deepgram).</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  {!isRecording ? (
+                    <Button type="button" onClick={startRecording} className="bg-green-600 hover:bg-green-700 rounded-lg">
+                      <Mic2 className="w-4 h-4" />
+                      Start recording
+                    </Button>
+                  ) : (
+                    <Button type="button" onClick={stopRecording} variant="destructive" className="rounded-lg">
+                      Stop recording
+                    </Button>
+                  )}
+                </div>
+                {transcriptError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{transcriptError}</AlertDescription>
+                  </Alert>
+                )}
+                <div className="min-h-[4rem] rounded-lg bg-muted p-3 text-foreground text-sm">
+                  {transcript ? transcript : (isRecording ? 'Listening\u2026' : 'Start recording to see the transcript here.')}
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </main>
 
-      {/* Upload Modal */}
       {showUploadModal && (
         <UploadModal
           onClose={() => setShowUploadModal(false)}
           onUpload={handleUpload}
         />
       )}
+
+      <button
+        className="fixed bottom-6 right-6 w-12 h-12 bg-foreground text-background rounded-full flex items-center justify-center shadow-lg hover:opacity-90 transition-opacity z-50"
+        aria-label="Help"
+      >
+        <HelpCircle className="w-5 h-5" />
+      </button>
     </div>
   );
 }

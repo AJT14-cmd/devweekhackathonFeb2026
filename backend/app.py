@@ -1,51 +1,57 @@
 """
 Flask-SocketIO server for real-time AI meeting transcription.
 Streams client audio to Deepgram and forwards transcripts back.
-Also serves REST API for meetings (no Supabase).
+REST API for meetings backed by Supabase Postgres + Storage.
 """
-import eventlet
-eventlet.monkey_patch()
-
 import os
-import uuid
-from datetime import datetime
-from flask import Flask, request, jsonify
+import uuid as _uuid
+from flask import Flask, request, jsonify, g
 from flask_socketio import SocketIO
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from deepgram_stream import DeepgramStream
+from supabase_client import supabase
+from auth import require_auth
+
+import jwt as pyjwt
+
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Per-connection Deepgram stream (keyed by session id)
 streams = {}
 
-# In-memory meetings store (local backend, no Supabase)
-meetings_store = {}
+STORAGE_BUCKET = "meeting-audio"
 
 
-def meeting_to_json(m):
+# ──────────────────── helpers ────────────────────
+
+def _row_to_json(row: dict) -> dict:
+    """Map a Supabase DB row (snake_case) to the JSON shape the frontend expects."""
     return {
-        "id": m["id"],
-        "title": m["title"],
-        "uploadDate": m["uploadDate"],
-        "duration": m.get("duration", "0:00"),
-        "fileName": m.get("fileName", ""),
-        "wordCount": m.get("wordCount", 0),
-        "transcript": m.get("transcript", ""),
-        "summary": m.get("summary", ""),
-        "keyInsights": m.get("keyInsights", []),
-        "decisions": m.get("decisions", []),
-        "actionItems": m.get("actionItems", []),
-        "processed": m.get("processed", False),
-        "audioUrl": m.get("audioUrl"),
-        "error": m.get("error"),
+        "id": row["id"],
+        "title": row["title"],
+        "uploadDate": row.get("upload_date", ""),
+        "duration": row.get("duration", "0:00"),
+        "fileName": row.get("file_name", ""),
+        "wordCount": row.get("word_count", 0),
+        "transcript": row.get("transcript", ""),
+        "summary": row.get("summary", ""),
+        "keyInsights": row.get("key_insights", []),
+        "decisions": row.get("decisions", []),
+        "actionItems": row.get("action_items", []),
+        "processed": row.get("processed", False),
+        "audioUrl": None,  # populated on single-meeting fetch
+        "error": row.get("error"),
     }
 
+
+# ──────────────────── routes ────────────────────
 
 @app.route("/health")
 def health():
@@ -53,67 +59,156 @@ def health():
 
 
 @app.route("/meetings", methods=["GET"])
+@require_auth
 def list_meetings():
-    return jsonify({"meetings": [meeting_to_json(m) for m in meetings_store.values()]})
+    result = (
+        supabase.table("meetings")
+        .select("*")
+        .eq("user_id", g.user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    meetings = [_row_to_json(r) for r in result.data]
+    return jsonify({"meetings": meetings})
 
 
 @app.route("/meetings", methods=["POST"])
+@require_auth
 def create_meeting():
     title = request.form.get("title", "Untitled")
     audio = request.files.get("audio")
-    meeting_id = str(uuid.uuid4())
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    meeting = {
-        "id": meeting_id,
+
+    audio_path = None
+    file_name = ""
+
+    if audio:
+        file_name = audio.filename or "audio"
+        ext = os.path.splitext(file_name)[1] or ".webm"
+        storage_name = f"{g.user_id}/{_uuid.uuid4()}{ext}"
+        file_bytes = audio.read()
+        supabase.storage.from_(STORAGE_BUCKET).upload(
+            storage_name,
+            file_bytes,
+            {"content-type": audio.content_type or "audio/webm"},
+        )
+        audio_path = storage_name
+
+    # Insert row into meetings table
+    row = {
+        "user_id": g.user_id,
         "title": title,
-        "uploadDate": now,
-        "duration": "0:00",
-        "fileName": audio.filename if audio else "",
-        "wordCount": 0,
-        "transcript": "",
-        "summary": "",
-        "keyInsights": [],
-        "decisions": [],
-        "actionItems": [],
-        "processed": False,
+        "file_name": file_name,
+        "audio_path": audio_path,
     }
-    meetings_store[meeting_id] = meeting
-    return jsonify({"meeting": meeting_to_json(meeting)})
+    result = supabase.table("meetings").insert(row).execute()
+    meeting = result.data[0]
+    return jsonify({"meeting": _row_to_json(meeting)}), 201
 
 
 @app.route("/meetings/<meeting_id>", methods=["GET"])
+@require_auth
 def get_meeting(meeting_id):
-    if meeting_id not in meetings_store:
+    result = (
+        supabase.table("meetings")
+        .select("*")
+        .eq("id", meeting_id)
+        .eq("user_id", g.user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not result.data:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({"meeting": meeting_to_json(meetings_store[meeting_id])})
+
+    meeting_json = _row_to_json(result.data)
+
+    # Generate a signed URL for audio playback if audio exists
+    audio_path = result.data.get("audio_path")
+    if audio_path:
+        signed = supabase.storage.from_(STORAGE_BUCKET).create_signed_url(audio_path, 3600)
+        meeting_json["audioUrl"] = signed.get("signedURL") or signed.get("signedUrl")
+
+    return jsonify({"meeting": meeting_json})
 
 
 @app.route("/meetings/<meeting_id>", methods=["DELETE"])
+@require_auth
 def delete_meeting(meeting_id):
-    if meeting_id not in meetings_store:
+    # Fetch first to get audio_path
+    result = (
+        supabase.table("meetings")
+        .select("audio_path")
+        .eq("id", meeting_id)
+        .eq("user_id", g.user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not result.data:
         return jsonify({"error": "Not found"}), 404
-    del meetings_store[meeting_id]
+
+    # Delete audio from storage
+    audio_path = result.data.get("audio_path")
+    if audio_path:
+        try:
+            supabase.storage.from_(STORAGE_BUCKET).remove([audio_path])
+        except Exception as e:
+            print(f"Storage delete warning: {e}")
+
+    # Delete row
+    supabase.table("meetings").delete().eq("id", meeting_id).eq("user_id", g.user_id).execute()
     return jsonify({"ok": True})
 
 
 @app.route("/meetings/<meeting_id>/process", methods=["POST"])
+@require_auth
 def process_meeting(meeting_id):
-    if meeting_id not in meetings_store:
+    result = (
+        supabase.table("meetings")
+        .select("*")
+        .eq("id", meeting_id)
+        .eq("user_id", g.user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not result.data:
         return jsonify({"error": "Not found"}), 404
-    m = meetings_store[meeting_id]
-    m["processed"] = True
-    m["summary"] = m.get("summary") or "Summary (process stub – add Deepgram file API to generate)."
-    m["transcript"] = m.get("transcript") or "(Transcript would come from Deepgram file processing.)"
-    m["keyInsights"] = m.get("keyInsights") or []
-    m["decisions"] = m.get("decisions") or []
-    m["actionItems"] = m.get("actionItems") or []
-    m["wordCount"] = len(m["transcript"].split())
-    return jsonify({"meeting": meeting_to_json(m)})
 
+    m = result.data
+
+    updates = {
+        "processed": True,
+        "summary": m.get("summary") or "Summary (stub – add Deepgram file API to generate).",
+        "transcript": m.get("transcript") or "(Transcript from Deepgram file processing.)",
+        "key_insights": m.get("key_insights") or [],
+        "decisions": m.get("decisions") or [],
+        "action_items": m.get("action_items") or [],
+    }
+    updates["word_count"] = len(updates["transcript"].split())
+
+    updated = (
+        supabase.table("meetings")
+        .update(updates)
+        .eq("id", meeting_id)
+        .eq("user_id", g.user_id)
+        .execute()
+    )
+    return jsonify({"meeting": _row_to_json(updated.data[0])})
+
+
+# ──────────────────── SocketIO events ────────────────────
 
 @socketio.on("connect")
 def handle_connect():
     sid = request.sid
+
+    # Optionally verify JWT from handshake auth
+    token = request.args.get("token") or (request.headers.get("Authorization") or "").replace("Bearer ", "")
+    if token and SUPABASE_JWT_SECRET:
+        try:
+            pyjwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+        except pyjwt.InvalidTokenError:
+            print(f"SocketIO auth failed for {sid}")
+            return False  # reject connection
+
     print(f"Client connected: {sid}")
     try:
         streams[sid] = DeepgramStream(socketio, sid)

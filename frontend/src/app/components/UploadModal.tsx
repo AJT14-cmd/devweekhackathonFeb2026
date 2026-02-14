@@ -1,5 +1,16 @@
 import { useState, useCallback } from 'react';
-import { X, Upload, Loader2 } from 'lucide-react';
+import { Upload, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from './ui/dialog';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 interface UploadModalProps {
   onClose: () => void;
@@ -58,37 +69,34 @@ export function UploadModal({ onClose, onUpload }: UploadModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl text-gray-900">Upload Meeting Recording</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
-        </div>
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Upload Meeting Recording</DialogTitle>
+          <DialogDescription>
+            Add a title and select an audio file to upload and process with AI.
+          </DialogDescription>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">Meeting Title</label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="meeting-title">Meeting Title</Label>
+            <Input
+              id="meeting-title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               placeholder="Q1 Planning Meeting"
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm text-gray-700 mb-2">Audio File</label>
+          <div className="space-y-2">
+            <Label>Audio File</Label>
             <div
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors"
+              className="border-2 border-dashed border-input rounded-lg p-8 text-center hover:border-primary/50 hover:bg-muted/50 transition-colors"
             >
               <input
                 type="file"
@@ -99,35 +107,30 @@ export function UploadModal({ onClose, onUpload }: UploadModalProps) {
               />
               <label htmlFor="audio-file" className="cursor-pointer block">
                 {audioFile ? (
-                  <div className="text-gray-700">
-                    <p className="mb-1">{audioFile.name}</p>
-                    <p className="text-sm text-gray-500">
+                  <div className="text-foreground">
+                    <p className="font-medium mb-1">{audioFile.name}</p>
+                    <p className="text-sm text-muted-foreground">
                       {(audioFile.size / 1024 / 1024).toFixed(2)} MB
                     </p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-2">
-                    <Upload className="w-8 h-8 text-gray-400" />
-                    <p className="text-gray-700">Drop audio file here or click to browse</p>
-                    <p className="text-xs text-gray-500">MP3, WAV, M4A, and other formats</p>
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                    <p className="text-foreground">Drop audio file here or click to browse</p>
+                    <p className="text-xs text-muted-foreground">MP3, WAV, M4A, and other formats</p>
                   </div>
                 )}
               </label>
             </div>
           </div>
 
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={!audioFile || !title.trim() || isUploading}
-              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isUploading ? (
                 <>
@@ -137,10 +140,10 @@ export function UploadModal({ onClose, onUpload }: UploadModalProps) {
               ) : (
                 'Upload Meeting'
               )}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

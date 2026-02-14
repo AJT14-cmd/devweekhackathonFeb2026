@@ -1,12 +1,26 @@
 :root {
   --font-size: 16px;
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
+  --font-sans: ui-sans-serif, system-ui, sans-serif, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --background: #f5f3ff;
+  --foreground: #1a1a2e;
   --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --border: rgba(0, 0, 0, 0.1);
+  --card-foreground: #1a1a2e;
+  --border: 240 6% 90%;
+  --input: 240 6% 90%;
   --input-background: #f3f3f5;
   --radius: 0.625rem;
+  /* Indigo primary to match Figma */
+  --primary: 239 84% 67%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 20% 96%;
+  --secondary-foreground: 239 50% 30%;
+  --destructive: 0 84.2% 60.2%;
+  --muted: 240 20% 96%;
+  --muted-foreground: 240 5% 46%;
+  --accent: 240 20% 96%;
+  --accent-foreground: 239 50% 30%;
+  --ring: 239 84% 67%;
+  --spacing: 0.25rem;
 }
 
 .dark {
@@ -14,7 +28,18 @@
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.145 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --border: oklch(0.269 0 0);
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --primary: 239 84% 67%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --ring: 239 84% 67%;
 }
 
 html {
@@ -22,6 +47,7 @@ html {
 }
 
 body {
+  font-family: var(--font-sans);
   background-color: var(--background);
   color: var(--foreground);
 }
