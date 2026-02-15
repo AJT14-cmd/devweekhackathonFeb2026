@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react';
 import { ArrowLeft, Calendar, Clock, Hash, FileText, Lightbulb, CheckCircle, ListTodo } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
@@ -19,12 +20,24 @@ interface Meeting {
   audioUrl?: string;
 }
 
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 interface MeetingDetailProps {
   meeting: Meeting;
   onBack: () => void;
 }
 
 export function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
+  const [resolvedDuration, setResolvedDuration] = useState<string | null>(null);
+  const onDurationLoaded = useCallback((durationSeconds: number) => {
+    setResolvedDuration(formatDuration(durationSeconds));
+  }, []);
+  const displayDuration = resolvedDuration ?? meeting.duration;
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <Button variant="ghost" onClick={onBack} className="gap-2 text-muted-foreground hover:text-foreground -ml-2">
@@ -38,11 +51,11 @@ export function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" />
-              <span>{format(new Date(meeting.uploadDate), 'MMMM d, yyyy')}</span>
+              <span>{format(new Date(meeting.uploadDate), "MMMM d, yyyy 'at' h:mm a")}</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4" />
-              <span>{meeting.duration}</span>
+              <span>{displayDuration}</span>
             </div>
             <div className="flex items-center gap-2">
               <Hash className="w-4 h-4" />
@@ -52,7 +65,11 @@ export function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
         </CardHeader>
         <CardContent>
           {meeting.audioUrl && (
-            <AudioPlayer audioUrl={meeting.audioUrl} fileName={meeting.fileName} />
+            <AudioPlayer
+              audioUrl={meeting.audioUrl}
+              fileName={meeting.fileName}
+              onDurationLoaded={onDurationLoaded}
+            />
           )}
         </CardContent>
       </Card>

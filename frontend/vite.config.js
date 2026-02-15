@@ -9,6 +9,7 @@ export default defineConfig({
       '/socket.io': { target: 'http://localhost:5000', ws: true },
       '/health': { target: 'http://localhost:5000' },
       '/meetings': { target: 'http://localhost:5000' },
+      '/uploads': { target: 'http://localhost:5000' },
     },
   },
 })

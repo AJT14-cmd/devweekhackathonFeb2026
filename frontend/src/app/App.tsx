@@ -5,11 +5,19 @@ import { UploadModal } from './components/UploadModal';
 import { SignIn } from './components/SignIn';
 import { useAudioStream } from './hooks/useAudioStream';
 import { useAuth } from './contexts/AuthContext';
-import { Plus, Mic2, Loader2, LogOut, HelpCircle } from 'lucide-react';
+import { Plus, Mic2, Loader2, LogOut, HelpCircle, Save, RotateCcw } from 'lucide-react';
 import { API_BASE_URL, authFetch } from './lib/api';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from './components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './components/ui/dialog';
 
 interface Meeting {
   id: string;
@@ -62,7 +70,16 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [backendError, setBackendError] = useState<string | null>(null);
-  const { startRecording, stopRecording, transcript, isRecording, error: transcriptError } = useAudioStream();
+  const [isSavingRecording, setIsSavingRecording] = useState(false);
+  const [recordingTitle, setRecordingTitle] = useState('');
+  const [showRecordingNameInput, setShowRecordingNameInput] = useState(false);
+  const { startRecording, stopRecording, transcript, isRecording, error: transcriptError, recordedAudio, hasPendingRecording, clearRecordedAudio, finalizeRecording, resetRecording } = useAudioStream();
+
+  const canSave = Boolean(transcript?.trim() && (recordedAudio || hasPendingRecording));
+
+  useEffect(() => {
+    if (!recordedAudio && !hasPendingRecording) setShowRecordingNameInput(false);
+  }, [recordedAudio, hasPendingRecording]);
 
   useEffect(() => {
     const healthCheck = async () => {
@@ -91,6 +108,54 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
       setMeetings(data.meetings || []);
     } catch (error) {
       console.error('Error fetching meetings:', error);
+    }
+  };
+
+  const formatDuration = (seconds: number): string => {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+  const handleSaveRecording = async () => {
+    if (!canSave) return;
+    if (!showRecordingNameInput) {
+      setShowRecordingNameInput(true);
+      return;
+    }
+    const blob = recordedAudio ?? (hasPendingRecording ? await finalizeRecording() : null)
+    if (!blob) return;
+    setIsSavingRecording(true);
+    try {
+      let durationStr = '0:00';
+      try {
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+        durationStr = formatDuration(decoded.duration);
+        audioContext.close();
+      } catch (_) {
+        // keep 0:00 if we can't decode
+      }
+      const title = recordingTitle.trim() || `Live recording ${new Date().toLocaleString()}`;
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('transcript', transcript);
+      formData.append('duration', durationStr);
+      formData.append('audio', blob, 'recording.webm');
+      const response = await authFetch(`${API_BASE_URL || ''}/meetings`, token, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error('Failed to save recording');
+      const data = await response.json();
+      setMeetings((prev) => [data.meeting, ...prev]);
+      clearRecordedAudio();
+      setRecordingTitle('');
+    } catch (error) {
+      console.error('Error saving recording:', error);
+    } finally {
+      setIsSavingRecording(false);
     }
   };
 
@@ -242,6 +307,12 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
                     meeting={meeting}
                     onSelect={handleSelectMeeting}
                     onDelete={handleDeleteMeeting}
+                    onDurationLoaded={(meetingId, durationStr) => {
+                      setMeetings((prev) =>
+                        prev.map((m) => (m.id === meetingId ? { ...m, duration: durationStr } : m))
+                      );
+                    }}
+                    authToken={token}
                   />
                 ))}
               </div>
@@ -251,28 +322,104 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
             <Card className="mt-10">
               <CardHeader>
                 <CardTitle className="text-lg">Live Transcript</CardTitle>
-                <p className="text-sm text-muted-foreground">Real-time speech-to-text via the local backend (Deepgram).</p>
+                <p className="text-sm text-muted-foreground">
+                  Start recording to capture audio and live transcript. Stop when done, then save to add the recording (with audio) to your meetings.
+                </p>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                   {!isRecording ? (
                     <Button type="button" onClick={startRecording} className="bg-green-600 hover:bg-green-700 rounded-lg">
                       <Mic2 className="w-4 h-4" />
-                      Start recording
+                      {hasPendingRecording ? 'Continue recording' : 'Start recording'}
                     </Button>
                   ) : (
                     <Button type="button" onClick={stopRecording} variant="destructive" className="rounded-lg">
                       Stop recording
                     </Button>
                   )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSaveRecording}
+                    disabled={!canSave || isSavingRecording || showRecordingNameInput}
+                    className="rounded-lg"
+                    title={!canSave ? 'Record something first, then save.' : showRecordingNameInput ? 'Use the popup to name and save.' : 'Save this recording (transcript + audio) to your meetings.'}
+                  >
+                    {isSavingRecording ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save recording
+                  </Button>
+                  {(isRecording || hasPendingRecording || transcript) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        resetRecording();
+                        setShowRecordingNameInput(false);
+                      }}
+                      className="rounded-lg text-muted-foreground hover:text-destructive"
+                      title="Clear transcript and audio (start over)"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Reset
+                    </Button>
+                  )}
                 </div>
-                {transcriptError && (
+                {!showRecordingNameInput && (recordedAudio || hasPendingRecording) && (
+                  <p className="text-sm text-muted-foreground">
+                    {hasPendingRecording
+                      ? 'Recording paused. Start again to continue, or Save to finish, or Reset to clear.'
+                      : 'Audio captured. Click Save recording to name and save.'}
+                  </p>
+                )}
+
+                <Dialog open={showRecordingNameInput} onOpenChange={setShowRecordingNameInput}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Name your recording</DialogTitle>
+                      <DialogDescription>
+                        Enter a name for this recording, then save to add it to your meetings.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-2">
+                      <label htmlFor="recording-name" className="text-sm font-medium text-foreground sr-only">
+                        Recording name
+                      </label>
+                      <input
+                        id="recording-name"
+                        type="text"
+                        value={recordingTitle}
+                        onChange={(e) => setRecordingTitle(e.target.value)}
+                        placeholder={`Live recording ${new Date().toLocaleString()}`}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowRecordingNameInput(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleSaveRecording}
+                        disabled={isSavingRecording}
+                      >
+                        {isSavingRecording ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Save recording
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                {transcriptError && !/already closed|socket.*closed/i.test(transcriptError) && (
                   <Alert variant="destructive">
                     <AlertDescription>{transcriptError}</AlertDescription>
                   </Alert>
                 )}
                 <div className="min-h-[4rem] rounded-lg bg-muted p-3 text-foreground text-sm">
-                  {transcript ? transcript : (isRecording ? 'Listening\u2026' : 'Start recording to see the transcript here.')}
+                  {transcript ? transcript : (isRecording ? 'Listening\u2026' : <span className="opacity-50">Start recording to see the transcript here.</span>)}
                 </div>
               </CardContent>
             </Card>

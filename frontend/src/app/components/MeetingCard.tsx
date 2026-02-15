@@ -1,7 +1,19 @@
+import { useEffect, useRef, useState } from 'react';
 import { Calendar, Clock, FileAudio, Trash2, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Button } from './ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
+import { API_BASE_URL, authFetch } from '../lib/api';
 
 interface Meeting {
   id: string;
@@ -12,20 +24,59 @@ interface Meeting {
   processed: boolean;
   summary?: string;
   error?: string;
+  audioUrl?: string;
 }
 
 interface MeetingCardProps {
   meeting: Meeting;
   onSelect: (meetingId: string) => void;
   onDelete: (meetingId: string) => void;
+  onDurationLoaded?: (meetingId: string, durationStr: string) => void;
+  authToken?: string;
 }
 
-export function MeetingCard({ meeting, onSelect, onDelete }: MeetingCardProps) {
-  const handleDelete = (e: React.MouseEvent) => {
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+export function MeetingCard({ meeting, onSelect, onDelete, onDurationLoaded, authToken }: MeetingCardProps) {
+  const [resolvedDuration, setResolvedDuration] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const resolvedRef = useRef(false);
+
+  const needsDuration = meeting.audioUrl && (meeting.duration === '0:00' || meeting.duration === '0:0');
+  const audioUrl = meeting.audioUrl;
+  const displayDuration = (meeting.duration !== '0:00' && meeting.duration !== '0:0') ? meeting.duration : (resolvedDuration ?? meeting.duration);
+
+  useEffect(() => {
+    if (!needsDuration || !audioUrl || !onDurationLoaded || !authToken || resolvedRef.current) return;
+    resolvedRef.current = true;
+    const url = audioUrl.startsWith('http') ? audioUrl : `${API_BASE_URL || ''}${audioUrl}`;
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    authFetch(url, authToken, { method: 'GET' })
+      .then((res) => res.arrayBuffer())
+      .then((buffer) => ctx.decodeAudioData(buffer))
+      .then((decoded) => {
+        if (decoded.duration != null && Number.isFinite(decoded.duration)) {
+          const str = formatDuration(decoded.duration);
+          setResolvedDuration(str);
+          onDurationLoaded(meeting.id, str);
+        }
+      })
+      .catch(() => {})
+      .finally(() => ctx.close());
+  }, [needsDuration, audioUrl, meeting.id, onDurationLoaded, authToken]);
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Delete "${meeting.title}"?`)) {
-      onDelete(meeting.id);
-    }
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = () => {
+    onDelete(meeting.id);
+    setShowDeleteDialog(false);
   };
 
   return (
@@ -46,12 +97,29 @@ export function MeetingCard({ meeting, onSelect, onDelete }: MeetingCardProps) {
         <Button
           variant="ghost"
           size="icon"
-          onClick={handleDelete}
+          onClick={handleDeleteClick}
           className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="w-4 h-4" />
         </Button>
       </CardHeader>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete recording?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{meeting.title}&quot;? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-white hover:bg-destructive/90 hover:text-white">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
@@ -60,7 +128,7 @@ export function MeetingCard({ meeting, onSelect, onDelete }: MeetingCardProps) {
           </div>
           <div className="flex items-center gap-1">
             <Clock className="w-4 h-4" />
-            <span>{meeting.duration}</span>
+            <span>{displayDuration}</span>
           </div>
         </div>
 
