@@ -64,7 +64,7 @@ export function SignIn() {
             {signUpSuccess ? (
               <div className="text-center space-y-3">
                 <p className="text-sm text-foreground">
-                  Check your email for a confirmation link, then sign in.
+                  Account created. You can sign in now.
                 </p>
                 <Button
                   variant="outline"

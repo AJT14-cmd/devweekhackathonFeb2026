@@ -37,7 +37,7 @@ interface Meeting {
 }
 
 export default function App() {
-  const { user, session, loading: authLoading, signOut } = useAuth();
+  const { user, token, loading: authLoading, signOut } = useAuth();
 
   // If auth is still loading, show spinner
   if (authLoading) {
@@ -49,17 +49,17 @@ export default function App() {
   }
 
   // If not signed in, show sign-in page
-  if (!session || !user) {
+  if (!user || !token) {
     return <SignIn />;
   }
 
-  return <AuthenticatedApp user={user} token={session.access_token} onSignOut={signOut} />;
+  return <AuthenticatedApp user={user} token={token} onSignOut={signOut} />;
 }
 
 /* ──────────── Authenticated app (only renders when signed in) ──────────── */
 
 interface AuthAppProps {
-  user: { email?: string };
+  user: { id: string; email: string };
   token: string;
   onSignOut: () => Promise<void>;
 }
@@ -269,6 +269,8 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
           <MeetingDetail
             meeting={selectedMeeting}
             onBack={() => setSelectedMeetingId(null)}
+            authToken={token}
+            apiBaseUrl={API_BASE_URL}
           />
         ) : (
           <>

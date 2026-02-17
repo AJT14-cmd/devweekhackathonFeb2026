@@ -1,4 +1,4 @@
-import { Play, Pause, Volume2 } from "lucide-react";
+import { Play, Pause, Volume2, Download } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
 interface AudioPlayerProps {
@@ -6,6 +6,10 @@ interface AudioPlayerProps {
   fileName: string;
   /** Called when the real audio duration is known (from decode or element). Use for metadata display. */
   onDurationLoaded?: (durationSeconds: number) => void;
+  /** Optional: URL to request for download (e.g. /meetings/:id/audio/download?format=mp3). Requires authToken. */
+  downloadAsMp3Url?: string;
+  /** Auth token for download request (required if downloadAsMp3Url is set). */
+  authToken?: string;
 }
 
 function safeDuration(d: number): number {
@@ -13,10 +17,11 @@ function safeDuration(d: number): number {
   return d;
 }
 
-export function AudioPlayer({ audioUrl, fileName, onDurationLoaded }: AudioPlayerProps) {
+export function AudioPlayer({ audioUrl, fileName, onDurationLoaded, downloadAsMp3Url, authToken }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [downloading, setDownloading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Get real duration before playback by decoding the file (works for WebM etc. where the <audio> element often reports NaN).
@@ -101,6 +106,28 @@ export function AudioPlayer({ audioUrl, fileName, onDurationLoaded }: AudioPlaye
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const handleDownloadMp3 = async () => {
+    if (!downloadAsMp3Url || !authToken) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(downloadAsMp3Url, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (fileName.replace(/\.[^.]+$/, '') || 'recording') + '.mp3';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Download failed:', e);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const safeD = safeDuration(duration);
   const maxForBar = safeD > 0 ? safeD : 1;
   const progressPercent = maxForBar > 0 ? Math.min(100, (currentTime / maxForBar) * 100) : 0;
@@ -138,6 +165,18 @@ export function AudioPlayer({ audioUrl, fileName, onDurationLoaded }: AudioPlaye
         </div>
         
         <Volume2 className="w-5 h-5 text-gray-500" />
+        {downloadAsMp3Url && authToken && (
+          <button
+            type="button"
+            onClick={handleDownloadMp3}
+            disabled={downloading}
+            className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            title="Download as MP3"
+          >
+            <Download className="w-4 h-4" />
+            {downloading ? 'Preparing…' : 'Download MP3'}
+          </button>
+        )}
       </div>
     </div>
   );

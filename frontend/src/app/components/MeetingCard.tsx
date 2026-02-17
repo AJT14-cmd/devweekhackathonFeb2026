@@ -51,16 +51,11 @@ export function MeetingCard({ meeting, onSelect, onDelete, onDurationLoaded, aut
   const displayDuration = (meeting.duration !== '0:00' && meeting.duration !== '0:0') ? meeting.duration : (resolvedDuration ?? meeting.duration);
 
   useEffect(() => {
-    const isSignedUrl = audioUrl?.startsWith('https://') && audioUrl?.includes('supabase');
-    if (!needsDuration || !audioUrl || !onDurationLoaded || resolvedRef.current) return;
-    if (!isSignedUrl && !authToken) return;
+    if (!needsDuration || !audioUrl || !onDurationLoaded || resolvedRef.current || !authToken) return;
     resolvedRef.current = true;
     const url = audioUrl.startsWith('http') ? audioUrl : `${API_BASE_URL || ''}${audioUrl}`;
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    // Signed Supabase URLs work with plain fetch; backend URLs need authFetch
-    const fetchPromise = url.startsWith('https://') && url.includes('supabase')
-      ? fetch(url)
-      : authFetch(url, authToken, { method: 'GET' });
+    const fetchPromise = authFetch(url, authToken, { method: 'GET' });
     fetchPromise
       .then((res) => res.arrayBuffer())
       .then((buffer) => ctx.decodeAudioData(buffer))

@@ -1,0 +1,42 @@
+# Run the full app locally: MongoDB + backend + frontend.
+# From project root: docker compose up --build
+# Then open http://localhost:5173 (frontend) and http://localhost:5000 (backend API).
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB_NAME: meeting_transcription
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
+    depends_on:
+      - mongo
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      # Browser (on host) uses these to reach the backend
+      VITE_API_URL: http://localhost:5000
+      VITE_SOCKET_URL: http://localhost:5000
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data: {}

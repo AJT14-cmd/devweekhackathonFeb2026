@@ -29,9 +29,12 @@ function formatDuration(seconds: number): string {
 interface MeetingDetailProps {
   meeting: Meeting;
   onBack: () => void;
+  /** Auth token and API base for download-as-MP3 (optional). */
+  authToken?: string;
+  apiBaseUrl?: string;
 }
 
-export function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
+export function MeetingDetail({ meeting, onBack, authToken, apiBaseUrl }: MeetingDetailProps) {
   const [resolvedDuration, setResolvedDuration] = useState<string | null>(null);
   const onDurationLoaded = useCallback((durationSeconds: number) => {
     setResolvedDuration(formatDuration(durationSeconds));
@@ -69,6 +72,8 @@ export function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
               audioUrl={meeting.audioUrl}
               fileName={meeting.fileName}
               onDurationLoaded={onDurationLoaded}
+              downloadAsMp3Url={authToken && apiBaseUrl !== undefined ? `${apiBaseUrl}/meetings/${meeting.id}/audio/download?format=mp3` : undefined}
+              authToken={authToken}
             />
           )}
         </CardContent>
