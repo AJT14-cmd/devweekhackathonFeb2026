@@ -73,6 +73,7 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
   const [isSavingRecording, setIsSavingRecording] = useState(false);
   const [recordingTitle, setRecordingTitle] = useState('');
   const [showRecordingNameInput, setShowRecordingNameInput] = useState(false);
+  const [refreshingMeetingId, setRefreshingMeetingId] = useState<string | null>(null);
   const { startRecording, stopRecording, transcript, isRecording, error: transcriptError, recordedAudio, hasPendingRecording, clearRecordedAudio, finalizeRecording, resetRecording } = useAudioStream();
 
   const canSave = Boolean(transcript?.trim() && (recordedAudio || hasPendingRecording));
@@ -114,6 +115,32 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
   useEffect(() => {
     fetchMeetings();
   }, [fetchMeetings]);
+
+  const onRefreshSummaryAndTranscript = useCallback(async (meetingId: string) => {
+    setRefreshingMeetingId(meetingId);
+    try {
+      const res = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}/process`, token, { method: 'POST' });
+      if (!res.ok) {
+        const ed = await res.json().catch(() => ({ error: 'Processing failed' }));
+        const msg = ed.detail ? `${ed.error || 'Processing failed'}: ${ed.detail}` : (ed.error || 'Processing failed');
+        console.error('[refresh process]', res.status, ed);
+        setMeetings(prev => prev.map(m =>
+          m.id === meetingId ? { ...m, processed: false, error: msg } : m
+        ));
+        return;
+      }
+      const { meeting: updated } = await res.json();
+      setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
+    } catch (err) {
+      console.error('[refresh process]', err);
+      const msg = err instanceof Error ? err.message : 'Refresh failed';
+      setMeetings(prev => prev.map(m =>
+        m.id === meetingId ? { ...m, processed: false, error: `Refresh failed: ${msg}` } : m
+      ));
+    } finally {
+      setRefreshingMeetingId(null);
+    }
+  }, [token]);
 
   const formatDuration = (seconds: number): string => {
       const m = Math.floor(seconds / 60);
@@ -238,33 +265,6 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
   const selectedMeeting = selectedMeetingId
     ? meetings.find(m => m.id === selectedMeetingId)
     : null;
-
-  const [refreshingMeetingId, setRefreshingMeetingId] = useState<string | null>(null);
-  const onRefreshSummaryAndTranscript = useCallback(async (meetingId: string) => {
-    setRefreshingMeetingId(meetingId);
-    try {
-      const res = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}/process`, token, { method: 'POST' });
-      if (!res.ok) {
-        const ed = await res.json().catch(() => ({ error: 'Processing failed' }));
-        const msg = ed.detail ? `${ed.error || 'Processing failed'}: ${ed.detail}` : (ed.error || 'Processing failed');
-        console.error('[refresh process]', res.status, ed);
-        setMeetings(prev => prev.map(m =>
-          m.id === meetingId ? { ...m, processed: false, error: msg } : m
-        ));
-        return;
-      }
-      const { meeting: updated } = await res.json();
-      setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
-    } catch (err) {
-      console.error('[refresh process]', err);
-      const msg = err instanceof Error ? err.message : 'Refresh failed';
-      setMeetings(prev => prev.map(m =>
-        m.id === meetingId ? { ...m, processed: false, error: `Refresh failed: ${msg}` } : m
-      ));
-    } finally {
-      setRefreshingMeetingId(null);
-    }
-  }, [token]);
 
   return (
     <div className="min-h-screen bg-background relative">
