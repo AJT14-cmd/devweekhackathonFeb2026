@@ -10,11 +10,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN (tr -d '\r' < /app/docker-entrypoint.sh > /tmp/ep && mv /tmp/ep /app/docker-entrypoint.sh) || true \
-    && chmod +x /app/docker-entrypoint.sh
-
 COPY . .
+
+RUN tr -d '\r' < /app/docker-entrypoint.sh > /tmp/ep && mv /tmp/ep /app/docker-entrypoint.sh \
+    && chmod +x /app/docker-entrypoint.sh
 
 ENV FLASK_APP=app.py
 EXPOSE 5000

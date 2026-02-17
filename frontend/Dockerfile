@@ -6,11 +6,10 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN (tr -d '\r' < /app/docker-entrypoint.sh > /tmp/ep && mv /tmp/ep /app/docker-entrypoint.sh) || true \
-    && chmod +x /app/docker-entrypoint.sh
-
 COPY . .
+
+RUN tr -d '\r' < /app/docker-entrypoint.sh > /tmp/ep && mv /tmp/ep /app/docker-entrypoint.sh \
+    && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 5173
 ENTRYPOINT ["/bin/sh", "/app/docker-entrypoint.sh"]

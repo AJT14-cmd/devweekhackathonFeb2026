@@ -1,7 +1,5 @@
 #!/bin/sh
 # Create .env from container environment (set by docker-compose from the YAML).
-# This way the app finds the same vars in .env when using load_dotenv().
-set -e
 cat << EOF > /app/.env
 # Auto-generated from docker-compose environment
 DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:-}
