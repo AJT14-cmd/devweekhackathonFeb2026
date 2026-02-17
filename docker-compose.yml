@@ -1,6 +1,8 @@
-# Run the full app locally: MongoDB + backend + frontend.
-# From project root: docker compose up --build
-# Then open http://localhost:5173 (frontend) and http://localhost:5000 (backend API).
+# All env vars are defined here with defaults. Override any in a .env file at project root.
+# MongoDB: default is local container; set MONGODB_URI to your Atlas URI to use Atlas instead.
+#
+# Run: docker compose up --build
+# Open: http://localhost:5173
 
 services:
   mongo:
@@ -9,6 +11,7 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    # Omit this service when using Atlas: run with --scale mongo=0 or set MONGODB_URI and stop mongo
 
   backend:
     build:
@@ -17,13 +20,13 @@ services:
     ports:
       - "5000:5000"
     environment:
-      MONGODB_URI: mongodb://mongo:27017
-      MONGODB_DB_NAME: meeting_transcription
+      # MongoDB: default = local mongo service; set MONGODB_URI to your Atlas URI to use Atlas (then you can omit starting mongo)
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
       JWT_SECRET: ${JWT_SECRET:-}
-      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
-    depends_on:
-      - mongo
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+    # No depends_on: mongo — so you can use Atlas (set MONGODB_URI in .env) and run only: docker compose up backend frontend
 
   frontend:
     build:
@@ -32,9 +35,8 @@ services:
     ports:
       - "5173:5173"
     environment:
-      # Browser (on host) uses these to reach the backend
-      VITE_API_URL: http://localhost:5000
-      VITE_SOCKET_URL: http://localhost:5000
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
+      VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:5000}
     depends_on:
       - backend
 

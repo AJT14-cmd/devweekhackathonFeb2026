@@ -7,7 +7,8 @@ from pymongo import MongoClient
 from gridfs import GridFS
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("MONGODB_DB_NAME", "meeting_transcription")
+# Empty unless set in .env / compose; backend falls back to meeting_transcription when empty
+DB_NAME = (os.getenv("MONGODB_DB_NAME") or "").strip() or "meeting_transcription"
 
 if not MONGODB_URI:
     raise RuntimeError("Missing MONGODB_URI in environment. Add it to backend/.env")

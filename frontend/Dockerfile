@@ -7,7 +7,8 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 COPY . .
+RUN chmod +x /app/docker-entrypoint.sh
 
-# Expose Vite dev server; --host 0.0.0.0 so it's reachable from host
 EXPOSE 5173
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
