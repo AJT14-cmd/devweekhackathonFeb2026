@@ -74,6 +74,7 @@ export function MeetingDetail({ meeting, onBack, authToken, apiBaseUrl }: Meetin
               onDurationLoaded={onDurationLoaded}
               downloadAsMp3Url={authToken && apiBaseUrl !== undefined ? `${apiBaseUrl}/meetings/${meeting.id}/audio/download?format=mp3` : undefined}
               authToken={authToken}
+              apiBaseUrl={apiBaseUrl}
             />
           )}
         </CardContent>
