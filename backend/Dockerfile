@@ -10,8 +10,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh && sed -i 's/\r$//' /app/docker-entrypoint.sh 2>/dev/null || true
+
 COPY . .
-RUN chmod +x /app/docker-entrypoint.sh
 
 ENV FLASK_APP=app.py
 EXPOSE 5000
