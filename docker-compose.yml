@@ -26,6 +26,9 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
       JWT_SECRET: ${JWT_SECRET:-}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
     # No depends_on: mongo — so you can use Atlas (set MONGODB_URI in .env) and run only: docker compose up backend frontend
 
   frontend:

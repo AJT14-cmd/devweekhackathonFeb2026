@@ -21,6 +21,7 @@ load_dotenv()
 
 from deepgram_stream import DeepgramStream
 from deepgram_file import transcribe_audio
+from summarize import summarize_transcript
 from auth import require_auth
 from mongodb_client import get_meetings_collection, get_fs, get_users_collection
 
@@ -464,7 +465,6 @@ def process_meeting(meeting_id):
                 _process_log(f"Loaded audio: {len(audio_bytes)} bytes, content_type={content_type}")
                 transcript = transcribe_audio(audio_bytes, content_type)
                 if transcript:
-                    summary = transcript[:500] + "..." if len(transcript) > 500 else transcript
                     _process_log(f"Transcription done: {len(transcript)} chars")
                 else:
                     _process_log("Transcription returned empty; keeping stub")
@@ -489,13 +489,27 @@ def process_meeting(meeting_id):
         if not summary:
             summary = SUMMARY_STUB
 
+        # Run summarization for any real transcript (new or existing) to get key insights/decisions/actions
+        key_insights = doc.get("key_insights") or []
+        decisions = doc.get("decisions") or []
+        action_items = doc.get("action_items") or []
+        if transcript and transcript != TRANSCRIPT_STUB and len(transcript.strip()) >= 50:
+            summarized = summarize_transcript(transcript)
+            if summarized:
+                summary = summarized.get("summary") or summary or (transcript[:500] + "..." if len(transcript) > 500 else transcript)
+                key_insights = summarized.get("key_insights") or []
+                decisions = summarized.get("decisions") or []
+                action_items = summarized.get("action_items") or []
+            elif not summary or summary == SUMMARY_STUB:
+                summary = transcript[:500] + "..." if len(transcript) > 500 else transcript
+
         update_data = {
             "processed": True,
             "summary": summary,
             "transcript": transcript,
-            "key_insights": doc.get("key_insights") or [],
-            "decisions": doc.get("decisions") or [],
-            "action_items": doc.get("action_items") or [],
+            "key_insights": key_insights,
+            "decisions": decisions,
+            "action_items": action_items,
             "word_count": len(transcript.split()),
         }
         get_meetings_collection().update_one(

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { ArrowLeft, Calendar, Clock, Hash, FileText, Lightbulb, CheckCircle, ListTodo, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -83,7 +83,7 @@ export function MeetingDetail({ meeting, onBack, onRefreshSummaryAndTranscript, 
         </CardContent>
       </Card>
 
-      {/* Summary */}
+      {/* Summary: overview + key insights & points in one card */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-xl flex items-center gap-2">
@@ -103,88 +103,62 @@ export function MeetingDetail({ meeting, onBack, onRefreshSummaryAndTranscript, 
             </Button>
           )}
         </CardHeader>
-        <CardContent>
-          <p className="text-card-foreground leading-relaxed">
-            {meeting.summary || (isRefreshing ? 'Refreshing…' : (onRefreshSummaryAndTranscript ? 'No summary yet. Click Refresh to generate from audio.' : ''))}
-          </p>
+        <CardContent className="space-y-5">
+          {/* Overview paragraph */}
+          <div>
+            <p className="text-card-foreground leading-relaxed">
+              {meeting.summary || (isRefreshing ? 'Refreshing…' : (onRefreshSummaryAndTranscript ? 'No summary yet. Click Refresh to generate from audio.' : ''))}
+            </p>
+          </div>
+          {/* Key insights as bullet list */}
+          {meeting.keyInsights && meeting.keyInsights.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Key insights</h4>
+              <ul className="space-y-2">
+                {meeting.keyInsights.map((insight, index) => (
+                  <li key={index} className="flex gap-3 text-card-foreground">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-medium mt-0.5">
+                      {index + 1}
+                    </span>
+                    <span className="leading-relaxed">{insight}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* Decisions in same card */}
+          {meeting.decisions && meeting.decisions.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Decisions</h4>
+              <ul className="space-y-2">
+                {meeting.decisions.map((decision, index) => (
+                  <li key={index} className="flex gap-3 text-card-foreground">
+                    <CheckCircle className="flex-shrink-0 w-5 h-5 text-green-600 mt-0.5" />
+                    <span className="leading-relaxed">{decision}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* Action items in same card */}
+          {meeting.actionItems && meeting.actionItems.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Action items</h4>
+              <ul className="space-y-2">
+                {meeting.actionItems.map((item, index) => (
+                  <li key={index} className="flex gap-3 text-card-foreground">
+                    <ListTodo className="flex-shrink-0 w-5 h-5 text-primary mt-0.5" />
+                    <span className="leading-relaxed">
+                      {item.text}
+                      {item.assignee && <span className="text-muted-foreground text-sm ml-1">(→ {item.assignee})</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {/* Key Insights */}
-      {meeting.keyInsights && meeting.keyInsights.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2">
-              <Lightbulb className="w-5 h-5 text-amber-500" />
-              Key Insights
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {meeting.keyInsights.map((insight, index) => (
-                <li key={index} className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 bg-primary/10 text-primary rounded-full flex items-center justify-center text-sm font-medium">
-                    {index + 1}
-                  </span>
-                  <span className="text-card-foreground">{insight}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Decisions */}
-      {meeting.decisions && meeting.decisions.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              Decisions Made
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {meeting.decisions.map((decision, index) => (
-                <li key={index} className="flex gap-3">
-                  <CheckCircle className="flex-shrink-0 w-5 h-5 text-green-500 mt-0.5" />
-                  <span className="text-card-foreground">{decision}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Action Items */}
-      {meeting.actionItems && meeting.actionItems.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2">
-              <ListTodo className="w-5 h-5 text-primary" />
-              Action Items
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {meeting.actionItems.map((item, index) => (
-                <li key={index} className="flex gap-3 items-start">
-                  <input
-                    type="checkbox"
-                    className="mt-1 w-5 h-5 rounded border-input text-primary focus:ring-ring"
-                  />
-                  <div className="flex-1">
-                    <p className="text-card-foreground">{item.text}</p>
-                    {item.assignee && (
-                      <p className="text-sm text-muted-foreground mt-1">Assigned to: {item.assignee}</p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Full Transcript */}
       {(meeting.transcript || onRefreshSummaryAndTranscript) && (
