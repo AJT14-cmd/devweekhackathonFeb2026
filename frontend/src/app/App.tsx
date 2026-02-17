@@ -96,20 +96,24 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
     healthCheck();
   }, [token]);
 
-  useEffect(() => {
-    fetchMeetings();
-  }, []);
-
-  const fetchMeetings = async () => {
+  const fetchMeetings = useCallback(async () => {
     try {
       const response = await authFetch(`${API_BASE_URL || ''}/meetings`, token);
+      if (response.status === 401) {
+        await onSignOut();
+        return;
+      }
       if (!response.ok) throw new Error('Failed to fetch meetings');
       const data = await response.json();
       setMeetings(data.meetings || []);
     } catch (error) {
       console.error('Error fetching meetings:', error);
     }
-  };
+  }, [token, onSignOut]);
+
+  useEffect(() => {
+    fetchMeetings();
+  }, [fetchMeetings]);
 
   const formatDuration = (seconds: number): string => {
       const m = Math.floor(seconds / 60);
