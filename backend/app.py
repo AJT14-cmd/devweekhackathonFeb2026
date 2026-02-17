@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from datetime import datetime
 from flask import Flask, request, jsonify, g, send_file
+from flask_cors import CORS
 from flask_socketio import SocketIO
 from dotenv import load_dotenv
 import bcrypt
@@ -24,6 +25,7 @@ from mongodb_client import get_meetings_collection, get_fs, get_users_collection
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
+CORS(app)  # Allow browser at localhost:5173 to call API at localhost:5000
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Per-connection Deepgram stream (keyed by session id)
