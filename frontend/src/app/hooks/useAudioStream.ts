@@ -239,7 +239,8 @@ export function useAudioStream() {
         }
       })
 
-      const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)({ sampleRate: SAMPLE_RATE })
+      // Use default sample rate so it matches the MediaStream (avoids "different sample-rate" error)
+      const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
       contextRef.current = audioContext
 
       const source = audioContext.createMediaStreamSource(stream)
