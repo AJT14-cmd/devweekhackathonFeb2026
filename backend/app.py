@@ -20,6 +20,7 @@ import jwt as pyjwt
 load_dotenv()
 
 from deepgram_stream import DeepgramStream
+from deepgram_file import transcribe_audio
 from auth import require_auth
 from mongodb_client import get_meetings_collection, get_fs, get_users_collection
 
@@ -428,18 +429,69 @@ def delete_meeting(meeting_id):
         return jsonify({"error": "Failed to delete meeting"}), 500
 
 
+# Placeholder text we replace when we have audio to transcribe
+TRANSCRIPT_STUB = "(Transcript from Deepgram file processing.)"
+SUMMARY_STUB = "Summary (stub – add Deepgram file API to generate)."
+
+
+def _process_log(msg: str) -> None:
+    print(f"[process_meeting] {msg}", flush=True)
+
+
 @app.route("/meetings/<meeting_id>/process", methods=["POST"])
 @require_auth
 def process_meeting(meeting_id):
     user_id = g.user_id
     try:
+        _process_log(f"Processing meeting_id={meeting_id}")
         doc = get_meetings_collection().find_one({"id": meeting_id, "user_id": user_id})
         if not doc:
+            _process_log("Meeting not found")
             return jsonify({"error": "Not found"}), 404
-        transcript = doc.get("transcript") or "(Transcript from Deepgram file processing.)"
+
+        transcript = (doc.get("transcript") or "").strip()
+        summary = (doc.get("summary") or "").strip()
+        audio_file_id = doc.get("audio_file_id")
+        needs_transcription = audio_file_id and (not transcript or transcript == TRANSCRIPT_STUB)
+
+        if needs_transcription:
+            _process_log(f"Meeting has audio_file_id, fetching from GridFS...")
+            try:
+                fs = get_fs()
+                out = fs.get(audio_file_id)
+                audio_bytes = out.read()
+                content_type = (out.content_type or "audio/webm").split(";")[0].strip()
+                _process_log(f"Loaded audio: {len(audio_bytes)} bytes, content_type={content_type}")
+                transcript = transcribe_audio(audio_bytes, content_type)
+                if transcript:
+                    summary = transcript[:500] + "..." if len(transcript) > 500 else transcript
+                    _process_log(f"Transcription done: {len(transcript)} chars")
+                else:
+                    _process_log("Transcription returned empty; keeping stub")
+                    transcript = TRANSCRIPT_STUB
+                    summary = SUMMARY_STUB
+            except ValueError as e:
+                _process_log(f"Deepgram not configured: {e}")
+                transcript = transcript or TRANSCRIPT_STUB
+                summary = summary or SUMMARY_STUB
+            except Exception as e:
+                err_msg = str(e)
+                _process_log(f"Deepgram file transcription failed: {err_msg}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({
+                    "error": "Transcription failed",
+                    "detail": err_msg,
+                }), 502
+
+        if not transcript:
+            transcript = TRANSCRIPT_STUB
+        if not summary:
+            summary = SUMMARY_STUB
+
         update_data = {
             "processed": True,
-            "summary": doc.get("summary") or "Summary (stub – add Deepgram file API to generate).",
+            "summary": summary,
             "transcript": transcript,
             "key_insights": doc.get("key_insights") or [],
             "decisions": doc.get("decisions") or [],
@@ -453,10 +505,16 @@ def process_meeting(meeting_id):
         updated = {**doc, **update_data}
         updated["id"] = updated.get("id") or str(updated.get("_id", ""))
         audio_url = _create_audio_url(meeting_id, doc.get("audio_file_id") is not None)
+        _process_log("Done")
         return jsonify({"meeting": _doc_to_meeting_json(updated, audio_url)})
     except Exception as e:
-        print(f"[process_meeting] error: {e}")
-        return jsonify({"error": "Failed to process meeting"}), 500
+        import traceback
+        _process_log(f"Error: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "error": "Failed to process meeting",
+            "detail": str(e),
+        }), 500
 
 
 # ──────────────────── SocketIO events ────────────────────

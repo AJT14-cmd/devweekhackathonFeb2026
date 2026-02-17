@@ -181,17 +181,21 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
       .then(async (res) => {
         if (!res.ok) {
           const ed = await res.json().catch(() => ({ error: 'Processing failed' }));
+          const msg = ed.detail ? `${ed.error || 'Processing failed'}: ${ed.detail}` : (ed.error || 'Processing failed');
+          console.error('[process]', res.status, ed);
           setMeetings(prev => prev.map(m =>
-            m.id === newMeeting.id ? { ...m, processed: false, error: ed.error || 'Processing failed' } : m
+            m.id === newMeeting.id ? { ...m, processed: false, error: msg } : m
           ));
           return;
         }
         const { meeting: pm } = await res.json();
         setMeetings(prev => prev.map(m => m.id === pm.id ? pm : m));
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[process]', err);
+        const msg = err instanceof Error ? err.message : 'Failed to process audio with AI';
         setMeetings(prev => prev.map(m =>
-          m.id === newMeeting.id ? { ...m, processed: false, error: 'Failed to process audio with AI' } : m
+          m.id === newMeeting.id ? { ...m, processed: false, error: `Network/processing error: ${msg}` } : m
         ));
       });
   };

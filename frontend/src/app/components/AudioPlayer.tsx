@@ -44,8 +44,18 @@ export function AudioPlayer({ audioUrl, fileName, onDurationLoaded, downloadAsMp
     const fullUrl = audioUrl.startsWith('http') ? audioUrl : `${apiBaseUrl || ''}${audioUrl}`;
     let revoked = false;
     fetch(fullUrl, { headers: { Authorization: `Bearer ${authToken}` } })
-      .then((res) => {
-        if (!res.ok) throw new Error(res.statusText);
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text();
+          let detail = text;
+          try {
+            const j = JSON.parse(text);
+            detail = j.detail || j.error || text;
+          } catch {
+            detail = text || res.statusText;
+          }
+          throw new Error(`${res.status}: ${detail}`);
+        }
         return res.blob();
       })
       .then((blob) => {
