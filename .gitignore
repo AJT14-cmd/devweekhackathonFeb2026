@@ -1,5 +1,51 @@
+# Environment (keep .env.example)
 .env
+.env.local
+.env.*.local
+
+# Python
 .venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+*.egg-info
+dist/
+build/
+*.manifest
+
+# Node / frontend
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+frontend/dist/
 uploads/
+
+# IDE / editor
 .cursor/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vite
+frontend/node_modules/.vite/
+
+# Logs (optional)
+*.log
+logs/

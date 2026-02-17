@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MeetingCard } from './components/MeetingCard';
 import { MeetingDetail } from './components/MeetingDetail';
 import { UploadModal } from './components/UploadModal';
@@ -37,7 +37,7 @@ interface Meeting {
 }
 
 export default function App() {
-  const { user, session, loading: authLoading, signOut } = useAuth();
+  const { user, token, loading: authLoading, signOut } = useAuth();
 
   // If auth is still loading, show spinner
   if (authLoading) {
@@ -49,17 +49,17 @@ export default function App() {
   }
 
   // If not signed in, show sign-in page
-  if (!session || !user) {
+  if (!user || !token) {
     return <SignIn />;
   }
 
-  return <AuthenticatedApp user={user} token={session.access_token} onSignOut={signOut} />;
+  return <AuthenticatedApp user={user} token={token} onSignOut={signOut} />;
 }
 
 /* ──────────── Authenticated app (only renders when signed in) ──────────── */
 
 interface AuthAppProps {
-  user: { email?: string };
+  user: { id: string; email: string };
   token: string;
   onSignOut: () => Promise<void>;
 }
@@ -73,6 +73,7 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
   const [isSavingRecording, setIsSavingRecording] = useState(false);
   const [recordingTitle, setRecordingTitle] = useState('');
   const [showRecordingNameInput, setShowRecordingNameInput] = useState(false);
+  const [refreshingMeetingId, setRefreshingMeetingId] = useState<string | null>(null);
   const { startRecording, stopRecording, transcript, isRecording, error: transcriptError, recordedAudio, hasPendingRecording, clearRecordedAudio, finalizeRecording, resetRecording } = useAudioStream();
 
   const canSave = Boolean(transcript?.trim() && (recordedAudio || hasPendingRecording));
@@ -96,20 +97,50 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
     healthCheck();
   }, [token]);
 
-  useEffect(() => {
-    fetchMeetings();
-  }, []);
-
-  const fetchMeetings = async () => {
+  const fetchMeetings = useCallback(async () => {
     try {
       const response = await authFetch(`${API_BASE_URL || ''}/meetings`, token);
+      if (response.status === 401) {
+        await onSignOut();
+        return;
+      }
       if (!response.ok) throw new Error('Failed to fetch meetings');
       const data = await response.json();
       setMeetings(data.meetings || []);
     } catch (error) {
       console.error('Error fetching meetings:', error);
     }
-  };
+  }, [token, onSignOut]);
+
+  useEffect(() => {
+    fetchMeetings();
+  }, [fetchMeetings]);
+
+  const onRefreshSummaryAndTranscript = useCallback(async (meetingId: string) => {
+    setRefreshingMeetingId(meetingId);
+    try {
+      const res = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}/process`, token, { method: 'POST' });
+      if (!res.ok) {
+        const ed = await res.json().catch(() => ({ error: 'Processing failed' }));
+        const msg = ed.detail ? `${ed.error || 'Processing failed'}: ${ed.detail}` : (ed.error || 'Processing failed');
+        console.error('[refresh process]', res.status, ed);
+        setMeetings(prev => prev.map(m =>
+          m.id === meetingId ? { ...m, processed: false, error: msg } : m
+        ));
+        return;
+      }
+      const { meeting: updated } = await res.json();
+      setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
+    } catch (err) {
+      console.error('[refresh process]', err);
+      const msg = err instanceof Error ? err.message : 'Refresh failed';
+      setMeetings(prev => prev.map(m =>
+        m.id === meetingId ? { ...m, processed: false, error: `Refresh failed: ${msg}` } : m
+      ));
+    } finally {
+      setRefreshingMeetingId(null);
+    }
+  }, [token]);
 
   const formatDuration = (seconds: number): string => {
       const m = Math.floor(seconds / 60);
@@ -181,17 +212,21 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
       .then(async (res) => {
         if (!res.ok) {
           const ed = await res.json().catch(() => ({ error: 'Processing failed' }));
+          const msg = ed.detail ? `${ed.error || 'Processing failed'}: ${ed.detail}` : (ed.error || 'Processing failed');
+          console.error('[process]', res.status, ed);
           setMeetings(prev => prev.map(m =>
-            m.id === newMeeting.id ? { ...m, processed: false, error: ed.error || 'Processing failed' } : m
+            m.id === newMeeting.id ? { ...m, processed: false, error: msg } : m
           ));
           return;
         }
         const { meeting: pm } = await res.json();
         setMeetings(prev => prev.map(m => m.id === pm.id ? pm : m));
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[process]', err);
+        const msg = err instanceof Error ? err.message : 'Failed to process audio with AI';
         setMeetings(prev => prev.map(m =>
-          m.id === newMeeting.id ? { ...m, processed: false, error: 'Failed to process audio with AI' } : m
+          m.id === newMeeting.id ? { ...m, processed: false, error: `Network/processing error: ${msg}` } : m
         ));
       });
   };
@@ -269,6 +304,10 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
           <MeetingDetail
             meeting={selectedMeeting}
             onBack={() => setSelectedMeetingId(null)}
+            onRefreshSummaryAndTranscript={onRefreshSummaryAndTranscript}
+            isRefreshing={refreshingMeetingId === selectedMeeting.id}
+            authToken={token}
+            apiBaseUrl={API_BASE_URL}
           />
         ) : (
           <>

@@ -2,7 +2,7 @@
 export const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
 /**
- * Wrapper around fetch that injects the Supabase JWT as a Bearer token.
+ * Wrapper around fetch that injects the backend JWT as a Bearer token.
  */
 export function authFetch(
   url: string,
