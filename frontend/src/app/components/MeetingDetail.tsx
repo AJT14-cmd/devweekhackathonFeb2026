@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { ArrowLeft, Calendar, Clock, Hash, FileText, Lightbulb, CheckCircle, ListTodo } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Hash, FileText, Lightbulb, CheckCircle, ListTodo, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -29,12 +29,15 @@ function formatDuration(seconds: number): string {
 interface MeetingDetailProps {
   meeting: Meeting;
   onBack: () => void;
+  /** Call to re-run transcription and refresh summary/transcript. */
+  onRefreshSummaryAndTranscript?: (meetingId: string) => void;
+  isRefreshing?: boolean;
   /** Auth token and API base for download-as-MP3 (optional). */
   authToken?: string;
   apiBaseUrl?: string;
 }
 
-export function MeetingDetail({ meeting, onBack, authToken, apiBaseUrl }: MeetingDetailProps) {
+export function MeetingDetail({ meeting, onBack, onRefreshSummaryAndTranscript, isRefreshing, authToken, apiBaseUrl }: MeetingDetailProps) {
   const [resolvedDuration, setResolvedDuration] = useState<string | null>(null);
   const onDurationLoaded = useCallback((durationSeconds: number) => {
     setResolvedDuration(formatDuration(durationSeconds));
@@ -82,14 +85,28 @@ export function MeetingDetail({ meeting, onBack, authToken, apiBaseUrl }: Meetin
 
       {/* Summary */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-xl flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
             Summary
           </CardTitle>
+          {onRefreshSummaryAndTranscript && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onRefreshSummaryAndTranscript(meeting.id)}
+              disabled={isRefreshing}
+              className="gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-          <p className="text-card-foreground leading-relaxed">{meeting.summary}</p>
+          <p className="text-card-foreground leading-relaxed">
+            {meeting.summary || (isRefreshing ? 'Refreshing…' : (onRefreshSummaryAndTranscript ? 'No summary yet. Click Refresh to generate from audio.' : ''))}
+          </p>
         </CardContent>
       </Card>
 
@@ -170,14 +187,26 @@ export function MeetingDetail({ meeting, onBack, authToken, apiBaseUrl }: Meetin
       )}
 
       {/* Full Transcript */}
-      {meeting.transcript && (
+      {(meeting.transcript || onRefreshSummaryAndTranscript) && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-xl">Full Transcript</CardTitle>
+            {onRefreshSummaryAndTranscript && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onRefreshSummaryAndTranscript(meeting.id)}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <p className="text-card-foreground leading-relaxed whitespace-pre-line">
-              {meeting.transcript}
+              {meeting.transcript || (isRefreshing ? 'Refreshing…' : 'No transcript yet. Click Refresh to generate from audio.')}
             </p>
           </CardContent>
         </Card>
