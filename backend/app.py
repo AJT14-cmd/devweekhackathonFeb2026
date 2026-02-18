@@ -409,15 +409,18 @@ def get_meeting(meeting_id):
 def update_meeting(meeting_id):
     user_id = g.user_id
     data = request.get_json(silent=True) or {}
-    new_title = data.get("title")
-    if new_title is None:
-        return jsonify({"error": "Send JSON with 'title'"}), 400
-    new_title = str(new_title).strip()
+    updates = {}
+    if "title" in data:
+        updates["title"] = str(data.get("title") or "").strip() or "Untitled"
+    if "file_name" in data:
+        updates["file_name"] = str(data.get("file_name") or "").strip()
+    if not updates:
+        return jsonify({"error": "Send JSON with 'title' and/or 'file_name'"}), 400
     try:
         coll = get_meetings_collection()
         result = coll.update_one(
             {"id": meeting_id, "user_id": user_id},
-            {"$set": {"title": new_title or "Untitled"}},
+            {"$set": updates},
         )
         if result.matched_count == 0:
             return jsonify({"error": "Not found"}), 404
