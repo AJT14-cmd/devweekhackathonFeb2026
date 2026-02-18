@@ -242,12 +242,30 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
     }
   };
 
+  const handleMeetingTitleChange = async (meetingId: string, newTitle: string) => {
+    setMeetings(prev => prev.map(m => (m.id === meetingId ? { ...m, title: newTitle } : m)));
+    try {
+      const response = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}`, token, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (!response.ok) throw new Error('Failed to update title');
+      const { meeting } = await response.json();
+      if (meeting?.title === newTitle) {
+        setMeetings(prev => prev.map(m => (m.id === meetingId ? { ...m, ...meeting } : m)));
+      }
+    } catch (error) {
+      console.error('Error updating title:', error);
+    }
+  };
+
   const handleSelectMeeting = async (meetingId: string) => {
     try {
       const response = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}`, token);
       if (!response.ok) throw new Error('Failed to fetch meeting details');
       const { meeting } = await response.json();
-      setMeetings(prev => prev.map(m => m.id === meeting.id ? meeting : m));
+      setMeetings(prev => prev.map(m => m.id === meeting.id ? { ...meeting, title: m.title } : m));
       setSelectedMeetingId(meetingId);
     } catch (error) {
       console.error('Error fetching meeting details:', error);
@@ -304,6 +322,7 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
           <MeetingDetail
             meeting={selectedMeeting}
             onBack={() => setSelectedMeetingId(null)}
+            onTitleChange={(newTitle) => handleMeetingTitleChange(selectedMeeting.id, newTitle)}
             onRefreshSummaryAndTranscript={onRefreshSummaryAndTranscript}
             isRefreshing={refreshingMeetingId === selectedMeeting.id}
             authToken={token}

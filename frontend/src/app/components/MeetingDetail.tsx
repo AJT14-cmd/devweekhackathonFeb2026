@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, RefreshCw } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, RefreshCw, Pencil, Check, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -29,6 +29,8 @@ function formatDuration(seconds: number): string {
 interface MeetingDetailProps {
   meeting: Meeting;
   onBack: () => void;
+  /** Called when the user saves a new title. */
+  onTitleChange?: (newTitle: string) => void;
   /** Call to re-run transcription and refresh summary/transcript. */
   onRefreshSummaryAndTranscript?: (meetingId: string) => void;
   isRefreshing?: boolean;
@@ -37,12 +39,35 @@ interface MeetingDetailProps {
   apiBaseUrl?: string;
 }
 
-export function MeetingDetail({ meeting, onBack, onRefreshSummaryAndTranscript, isRefreshing, authToken, apiBaseUrl }: MeetingDetailProps) {
+export function MeetingDetail({ meeting, onBack, onTitleChange, onRefreshSummaryAndTranscript, isRefreshing, authToken, apiBaseUrl }: MeetingDetailProps) {
   const [resolvedDuration, setResolvedDuration] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitleValue, setEditTitleValue] = useState('');
   const onDurationLoaded = useCallback((durationSeconds: number) => {
     setResolvedDuration(formatDuration(durationSeconds));
   }, []);
   const displayDuration = resolvedDuration ?? meeting.duration;
+
+  useEffect(() => {
+    setEditTitleValue('');
+    setIsEditingTitle(false);
+  }, [meeting.id, meeting.title]);
+
+  const startEditingTitle = () => {
+    setEditTitleValue('');
+    setIsEditingTitle(true);
+  };
+  const saveTitle = () => {
+    const trimmed = editTitleValue.trim();
+    if (trimmed && trimmed !== meeting.title) {
+      onTitleChange?.(trimmed);
+    }
+    setIsEditingTitle(false);
+  };
+  const cancelEditingTitle = () => {
+    setEditTitleValue('');
+    setIsEditingTitle(false);
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -53,7 +78,45 @@ export function MeetingDetail({ meeting, onBack, onRefreshSummaryAndTranscript, 
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-3xl">{meeting.title}</CardTitle>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isEditingTitle ? (
+              <>
+                <input
+                  type="text"
+                  value={editTitleValue}
+                  onChange={(e) => setEditTitleValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveTitle();
+                    if (e.key === 'Escape') cancelEditingTitle();
+                  }}
+                  placeholder={meeting.title}
+                  className="text-3xl font-semibold bg-transparent border-b-2 border-primary focus:outline-none focus:border-primary flex-1 min-w-[12rem] placeholder:text-muted-foreground placeholder:opacity-60"
+                  autoFocus
+                />
+                <Button variant="ghost" size="icon" onClick={saveTitle} className="shrink-0" title="Save title">
+                  <Check className="w-5 h-5 text-green-600" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={cancelEditingTitle} className="shrink-0" title="Cancel">
+                  <X className="w-5 h-5 text-muted-foreground" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <CardTitle className="text-3xl">{meeting.title}</CardTitle>
+                {onTitleChange && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={startEditingTitle}
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    title="Edit title"
+                  >
+                    <Pencil className="w-5 h-5" />
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" />

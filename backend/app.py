@@ -17,7 +17,10 @@ from dotenv import load_dotenv
 import bcrypt
 import jwt as pyjwt
 
-load_dotenv()
+# Load .env from backend directory so DEEPGRAM_API_KEY is found regardless of cwd
+_backend_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_backend_dir, ".env"))
+load_dotenv()  # Also load from current working directory (e.g. root .env)
 
 from deepgram_stream import DeepgramStream
 from deepgram_file import transcribe_audio
@@ -399,6 +402,32 @@ def get_meeting(meeting_id):
     except Exception as e:
         print(f"[get_meeting] error: {e}")
         return jsonify({"error": "Failed to fetch meeting"}), 500
+
+
+@app.route("/meetings/<meeting_id>", methods=["PATCH"])
+@require_auth
+def update_meeting(meeting_id):
+    user_id = g.user_id
+    data = request.get_json(silent=True) or {}
+    new_title = data.get("title")
+    if new_title is None:
+        return jsonify({"error": "Send JSON with 'title'"}), 400
+    new_title = str(new_title).strip()
+    try:
+        coll = get_meetings_collection()
+        result = coll.update_one(
+            {"id": meeting_id, "user_id": user_id},
+            {"$set": {"title": new_title or "Untitled"}},
+        )
+        if result.matched_count == 0:
+            return jsonify({"error": "Not found"}), 404
+        doc = coll.find_one({"id": meeting_id, "user_id": user_id})
+        doc["id"] = doc.get("id") or str(doc.get("_id", ""))
+        audio_url = _create_audio_url(meeting_id, doc.get("audio_file_id") is not None)
+        return jsonify({"meeting": _doc_to_meeting_json(doc, audio_url)})
+    except Exception as e:
+        print(f"[update_meeting] error: {e}")
+        return jsonify({"error": "Failed to update meeting"}), 500
 
 
 @app.route("/meetings/<meeting_id>", methods=["DELETE"])
