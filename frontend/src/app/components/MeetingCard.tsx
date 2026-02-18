@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Calendar, Clock, FileAudio, Trash2, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, FileAudio, Trash2, AlertCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Button } from './ui/button';
@@ -48,6 +48,7 @@ export function MeetingCard({ meeting, onSelect, onDelete, onDurationLoaded, aut
 
   const needsDuration = meeting.audioUrl && (meeting.duration === '0:00' || meeting.duration === '0:0');
   const audioUrl = meeting.audioUrl;
+  const durationLoading = needsDuration && resolvedDuration === null;
   const displayDuration = (meeting.duration !== '0:00' && meeting.duration !== '0:0') ? meeting.duration : (resolvedDuration ?? meeting.duration);
 
   useEffect(() => {
@@ -127,9 +128,13 @@ export function MeetingCard({ meeting, onSelect, onDelete, onDurationLoaded, aut
             <Calendar className="w-4 h-4" />
             <span>{format(new Date(meeting.uploadDate), 'MMM d, yyyy')}</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Clock className="w-4 h-4" />
-            <span>{displayDuration}</span>
+          <div className="flex items-center gap-1 min-w-[3rem]">
+            <Clock className="w-4 h-4 shrink-0" />
+            {durationLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" aria-label="Loading duration" />
+            ) : (
+              <span>{displayDuration}</span>
+            )}
           </div>
         </div>
 
