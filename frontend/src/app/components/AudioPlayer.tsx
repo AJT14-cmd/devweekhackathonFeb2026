@@ -1,4 +1,4 @@
-import { Play, Pause, Volume2, Download } from "lucide-react";
+import { Play, Pause, Volume2, Download, Pencil, Check, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
 interface AudioPlayerProps {
@@ -12,6 +12,8 @@ interface AudioPlayerProps {
   authToken?: string;
   /** Base URL for relative audioUrl (e.g. http://localhost:5000). Required when authToken is set and audioUrl is relative. */
   apiBaseUrl?: string;
+  /** Called when the user saves a new file name (e.g. to persist to the meeting). */
+  onFileNameChange?: (newFileName: string) => void;
 }
 
 function safeDuration(d: number): number {
@@ -19,11 +21,22 @@ function safeDuration(d: number): number {
   return d;
 }
 
-export function AudioPlayer({ audioUrl, fileName, onDurationLoaded, downloadAsMp3Url, authToken, apiBaseUrl }: AudioPlayerProps) {
+export function AudioPlayer({ audioUrl, fileName, onDurationLoaded, downloadAsMp3Url, authToken, apiBaseUrl, onFileNameChange }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const [isEditingFileName, setIsEditingFileName] = useState(false);
+  const [editFileNameValue, setEditFileNameValue] = useState(fileName);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setEditFileNameValue(fileName);
+  }, [fileName]);
+
+  useEffect(() => {
+    if (isEditingFileName) editInputRef.current?.focus();
+  }, [isEditingFileName]);
   const [playbackSrc, setPlaybackSrc] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -177,6 +190,16 @@ export function AudioPlayer({ audioUrl, fileName, onDurationLoaded, downloadAsMp
     }
   };
 
+  const saveFileName = () => {
+    const trimmed = editFileNameValue.trim();
+    if (trimmed && trimmed !== fileName) onFileNameChange?.(trimmed);
+    setIsEditingFileName(false);
+  };
+  const cancelEditFileName = () => {
+    setEditFileNameValue(fileName);
+    setIsEditingFileName(false);
+  };
+
   const safeD = safeDuration(duration);
   const maxForBar = safeD > 0 ? safeD : 1;
   const progressPercent = maxForBar > 0 ? Math.min(100, (currentTime / maxForBar) * 100) : 0;
@@ -197,7 +220,29 @@ export function AudioPlayer({ audioUrl, fileName, onDurationLoaded, downloadAsMp
         </button>
         
         <div className="flex-1">
-          <p className="text-sm text-gray-600 mb-1">{fileName}</p>
+          {isEditingFileName ? (
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                ref={editInputRef}
+                type="text"
+                value={editFileNameValue}
+                onChange={(e) => setEditFileNameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveFileName();
+                  if (e.key === 'Escape') cancelEditFileName();
+                }}
+                className="text-sm text-gray-800 border border-gray-300 rounded px-2 py-1 flex-1 min-w-0"
+              />
+              <button type="button" onClick={saveFileName} className="p-1 text-green-600 hover:bg-gray-100 rounded" title="Save name">
+                <Check className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={cancelEditFileName} className="p-1 text-gray-500 hover:bg-gray-100 rounded" title="Cancel">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600 mb-1">{fileName}</p>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">{formatTime(currentTime)}</span>
             <input
@@ -222,11 +267,20 @@ export function AudioPlayer({ audioUrl, fileName, onDurationLoaded, downloadAsMp
             type="button"
             onClick={handleDownloadMp3}
             disabled={downloading}
-            className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
             title="Download as MP3"
           >
             <Download className="w-4 h-4" />
-            {downloading ? 'Preparing…' : 'Download MP3'}
+          </button>
+        )}
+        {onFileNameChange && (
+          <button
+            type="button"
+            onClick={() => setIsEditingFileName(true)}
+            className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            title="Edit file name"
+          >
+            <Pencil className="w-4 h-4" />
           </button>
         )}
       </div>
