@@ -25,6 +25,14 @@ load_dotenv()  # Also load from current working directory (e.g. root .env)
 from deepgram_stream import DeepgramStream
 from deepgram_file import transcribe_audio
 from summarize import summarize_transcript
+
+# Startup check: verify You.com API key is loaded
+try:
+    from youcom import _get_api_key
+    _yk = _get_api_key()
+    print(f"[startup] You.com API key: {'configured' if _yk else 'NOT FOUND (check backend/.env)'}", flush=True)
+except Exception as e:
+    print(f"[startup] You.com check failed: {e}", flush=True)
 from auth import require_auth
 from mongodb_client import get_meetings_collection, get_fs, get_users_collection
 
@@ -58,6 +66,8 @@ def _doc_to_meeting_json(doc, audio_url=None):
         "transcript": doc.get("transcript") or "",
         "summary": doc.get("summary") or "",
         "keyInsights": doc.get("key_insights") or [],
+        "researchInsights": doc.get("research_insights") or [],
+        "summarySource": doc.get("summary_source") or "",
         "decisions": doc.get("decisions") or [],
         "actionItems": doc.get("action_items") or [],
         "processed": doc.get("processed") or False,
@@ -184,7 +194,16 @@ def auth_login():
 
 @app.route("/health")
 def health():
-    return jsonify({"ok": True})
+    youcom_configured = False
+    try:
+        from youcom import _get_api_key
+        youcom_configured = bool(_get_api_key())
+    except Exception:
+        pass
+    return jsonify({
+        "ok": True,
+        "youcom_configured": youcom_configured,
+    })
 
 
 @app.route("/meetings", methods=["GET"])
@@ -256,7 +275,25 @@ def create_meeting():
             return jsonify({"error": "Failed to upload audio"}), 500
 
     word_count = len(transcript_text.split()) if transcript_text else 0
-    summary = transcript_text[:200] + "..." if len(transcript_text) > 200 else (transcript_text if transcript_text else "")
+    summary = ""
+    summary_source = ""
+    key_insights = []
+    research_insights = []
+    decisions = []
+    action_items = []
+    if transcript_text and len(transcript_text.strip()) >= 50:
+        _dbg("H2", "create_meeting calling summarize_transcript", transcript_len=len(transcript_text))
+        summarized = summarize_transcript(transcript_text)
+        _dbg("H2", "create_meeting summarize returned", has_result=bool(summarized))
+        if summarized:
+            summary = summarized.get("summary") or ""
+            key_insights = summarized.get("key_insights") or []
+            research_insights = summarized.get("research_insights") or []
+            decisions = summarized.get("decisions") or []
+            action_items = summarized.get("action_items") or []
+            summary_source = summarized.get("summary_source") or ""
+    if not summary:
+        summary = "Summary will be generated when you process this meeting." if transcript_text else ""
 
     now = datetime.utcnow()
     meeting_doc = {
@@ -269,9 +306,11 @@ def create_meeting():
         "word_count": word_count,
         "transcript": transcript_text,
         "summary": summary,
-        "key_insights": [],
-        "decisions": [],
-        "action_items": [],
+        "key_insights": key_insights,
+        "research_insights": research_insights,
+        "decisions": decisions,
+        "action_items": action_items,
+        "summary_source": summary_source,
         "processed": bool(transcript_text),
         "audio_file_id": audio_file_id,
         "error": None,
@@ -471,11 +510,23 @@ def _process_log(msg: str) -> None:
     print(f"[process_meeting] {msg}", flush=True)
 
 
+# #region agent log
+def _dbg(hid: str, msg: str, **data):
+    try:
+        import json
+        p = os.path.join(_backend_dir, "..", "debug-c21db1.log")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId":"c21db1","hypothesisId":hid,"location":"app.py","message":msg,"data":data,"timestamp":__import__("time").time()*1000}) + "\n")
+    except Exception:
+        pass
+# #endregion
+
 @app.route("/meetings/<meeting_id>/process", methods=["POST"])
 @require_auth
 def process_meeting(meeting_id):
     user_id = g.user_id
     try:
+        _dbg("H2", "process_meeting called", meeting_id=meeting_id)
         _process_log(f"Processing meeting_id={meeting_id}")
         doc = get_meetings_collection().find_one({"id": meeting_id, "user_id": user_id})
         if not doc:
@@ -523,25 +574,35 @@ def process_meeting(meeting_id):
 
         # Run summarization for any real transcript (new or existing) to get key insights/decisions/actions
         key_insights = doc.get("key_insights") or []
+        research_insights = doc.get("research_insights") or []
         decisions = doc.get("decisions") or []
         action_items = doc.get("action_items") or []
+        summary_source = doc.get("summary_source") or ""
         if transcript and transcript != TRANSCRIPT_STUB and len(transcript.strip()) >= 50:
+            _dbg("H3", "calling summarize_transcript", transcript_len=len(transcript), is_stub=transcript == TRANSCRIPT_STUB)
             summarized = summarize_transcript(transcript)
+            _dbg("H3", "summarize_transcript returned", has_result=bool(summarized))
             if summarized:
                 summary = summarized.get("summary") or summary or (transcript[:500] + "..." if len(transcript) > 500 else transcript)
                 key_insights = summarized.get("key_insights") or []
+                research_insights = summarized.get("research_insights") or []
                 decisions = summarized.get("decisions") or []
                 action_items = summarized.get("action_items") or []
+                summary_source = summarized.get("summary_source") or ""
             elif not summary or summary == SUMMARY_STUB:
                 summary = transcript[:500] + "..." if len(transcript) > 500 else transcript
+        else:
+            _dbg("H3", "skipped summarize branch", transcript_len=len(transcript), is_stub=transcript == TRANSCRIPT_STUB)
 
         update_data = {
             "processed": True,
             "summary": summary,
             "transcript": transcript,
             "key_insights": key_insights,
+            "research_insights": research_insights,
             "decisions": decisions,
             "action_items": action_items,
+            "summary_source": summary_source,
             "word_count": len(transcript.split()),
         }
         get_meetings_collection().update_one(

@@ -29,6 +29,8 @@ interface Meeting {
   transcript: string;
   summary: string;
   keyInsights: string[];
+  summarySource?: string;
+  researchInsights?: Array<{ insight: string; url: string; title: string }>;
   decisions: string[];
   actionItems: Array<{ text: string; assignee?: string }>;
   processed: boolean;

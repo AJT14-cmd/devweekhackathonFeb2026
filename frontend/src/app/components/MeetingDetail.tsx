@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -15,6 +15,8 @@ interface Meeting {
   transcript: string;
   summary: string;
   keyInsights: string[];
+  summarySource?: string;
+  researchInsights?: Array<{ insight: string; url: string; title: string }>;
   decisions: string[];
   actionItems: Array<{ text: string; assignee?: string }>;
   audioUrl?: string;
@@ -149,9 +151,15 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
       {/* Summary: overview + key insights & points in one card */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl flex items-center gap-2">
+          <CardTitle className="text-xl flex items-center gap-2 flex-wrap">
             <FileText className="w-5 h-5 text-primary" />
             Summary
+            {meeting.summarySource === 'youcom' && (
+              <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-primary/20 text-primary">You.com AI</span>
+            )}
+            {meeting.summarySource === 'fallback' && (
+              <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Local fallback</span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -161,6 +169,33 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
               {meeting.summary || ''}
             </p>
           </div>
+          {/* Research & citations from You.com (live web data) */}
+          {meeting.researchInsights && meeting.researchInsights.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Research & citations</h4>
+              <p className="text-xs text-muted-foreground mb-2">Live insights from You.com Search</p>
+              <ul className="space-y-2">
+                {meeting.researchInsights.map((r, index) => (
+                  <li key={index} className="flex gap-3 text-card-foreground">
+                    <ExternalLink className="flex-shrink-0 w-5 h-5 text-primary mt-0.5" />
+                    <div>
+                      <p className="leading-relaxed">{r.insight}</p>
+                      {r.url && (
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline mt-0.5 inline-block"
+                        >
+                          {r.title || 'View source'}
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {/* Key insights as bullet list */}
           {meeting.keyInsights && meeting.keyInsights.length > 0 && (
             <div>
