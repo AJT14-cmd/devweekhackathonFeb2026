@@ -1,5 +1,6 @@
 # All env vars are defined here with defaults. Override any in a .env file at project root.
-# MongoDB: default is local container; set MONGODB_URI to your Atlas URI to use Atlas instead.
+# Uses host networking on Linux to avoid bridge/veth "operation not supported" issues.
+# MongoDB: default = localhost:27017; set MONGODB_URI to your Atlas URI to use Atlas instead.
 #
 # Run: docker compose up --build
 # Open: http://localhost:5173
@@ -7,37 +8,33 @@
 services:
   mongo:
     image: mongo:7
-    ports:
-      - "27017:27017"
+    network_mode: host
     volumes:
       - mongo_data:/data/db
-    # Omit this service when using Atlas: run with --scale mongo=0 or set MONGODB_URI and stop mongo
+    # Omit when using Atlas: run with --scale mongo=0 and set MONGODB_URI in .env
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
+      network: host
+    network_mode: host
     environment:
-      # MongoDB: default = local mongo service; set MONGODB_URI to your Atlas URI to use Atlas (then you can omit starting mongo)
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://127.0.0.1:27017}
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
       JWT_SECRET: ${JWT_SECRET:-}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
-      YOUCOM_API_KEY: ${YOUCOM_API_KEY:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
-    # No depends_on: mongo — so you can use Atlas (set MONGODB_URI in .env) and run only: docker compose up backend frontend
+      YOU_API_KEY: ${YOU_API_KEY:-}
+    depends_on:
+      - mongo
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "5173:5173"
+      network: host
+    network_mode: host
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
       VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:5000}
