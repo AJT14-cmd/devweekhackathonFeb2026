@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X, ExternalLink, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -47,6 +47,8 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
   const onDurationLoaded = useCallback((durationSeconds: number) => {
     setResolvedDuration(formatDuration(durationSeconds));
   }, []);
+  const isDurationPlaceholder = meeting.duration === '0:00' || meeting.duration === '0:0';
+  const durationLoading = Boolean(meeting.audioUrl && isDurationPlaceholder && resolvedDuration === null);
   const displayDuration = resolvedDuration ?? meeting.duration;
 
   useEffect(() => {
@@ -77,9 +79,9 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
         Back to Meetings
       </Button>
 
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
             {isEditingTitle ? (
               <>
                 <input
@@ -91,7 +93,7 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
                     if (e.key === 'Escape') cancelEditingTitle();
                   }}
                   placeholder={meeting.title}
-                  className="text-3xl font-semibold bg-transparent border-b-2 border-primary focus:outline-none focus:border-primary flex-1 min-w-[12rem] placeholder:text-muted-foreground placeholder:opacity-60"
+                  className="text-3xl font-semibold bg-transparent border-b-2 border-primary focus:outline-none focus:border-primary flex-1 min-w-0 max-w-full placeholder:text-muted-foreground placeholder:opacity-60"
                   autoFocus
                 />
                 <Button variant="ghost" size="icon" onClick={saveTitle} className="shrink-0" title="Save title">
@@ -103,7 +105,9 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
               </>
             ) : (
               <>
-                <CardTitle className="text-3xl">{meeting.title}</CardTitle>
+                <CardTitle className="text-3xl font-semibold break-words min-w-0 flex-1" title={meeting.title}>
+                  {meeting.title}
+                </CardTitle>
                 {onTitleChange && (
                   <Button
                     variant="ghost"
@@ -123,9 +127,13 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
               <Calendar className="w-4 h-4" />
               <span>{format(new Date(meeting.uploadDate), "MMMM d, yyyy 'at' h:mm a")}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              <span>{displayDuration}</span>
+            <div className="flex items-center gap-2 min-w-[3rem]">
+              <Clock className="w-4 h-4 shrink-0" />
+              {durationLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" aria-label="Loading duration" />
+              ) : (
+                <span>{displayDuration}</span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Hash className="w-4 h-4" />

@@ -5,7 +5,7 @@ import { UploadModal } from './components/UploadModal';
 import { SignIn } from './components/SignIn';
 import { useAudioStream } from './hooks/useAudioStream';
 import { useAuth } from './contexts/AuthContext';
-import { Plus, Mic2, Loader2, LogOut, Save, RotateCcw, Home, FolderOpen, FileText } from 'lucide-react';
+import { Plus, Mic2, Loader2, LogOut, Save, RotateCcw, Home, FolderOpen, FileText, Menu } from 'lucide-react';
 import { API_BASE_URL, authFetch } from './lib/api';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
@@ -77,6 +77,7 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
   const [showRecordingNameInput, setShowRecordingNameInput] = useState(false);
   const [activeView, setActiveView] = useState<'home' | 'meetings' | 'transcripts'>('home');
   const [returnToView, setReturnToView] = useState<'home' | 'meetings' | 'transcripts'>('home');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { startRecording, stopRecording, transcript, isRecording, error: transcriptError, recordedAudio, hasPendingRecording, clearRecordedAudio, finalizeRecording, resetRecording } = useAudioStream();
 
   const canSave = Boolean(transcript?.trim() && (recordedAudio || hasPendingRecording));
@@ -299,11 +300,20 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-card border-b border-border/60 shrink-0">
           <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center shrink-0">
-                <Mic2 className="w-5 h-5 text-primary-foreground" />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((open) => !open)}
+                className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center shrink-0 text-primary-foreground hover:opacity-90 transition-opacity"
+                aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={sidebarOpen}
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2">
+                <Mic2 className="w-5 h-5 text-primary shrink-0" />
+                <span className="font-semibold text-foreground">Meeting Insights</span>
               </div>
-              <span className="font-semibold text-foreground">Meeting Insights</span>
             </div>
             <p className="text-sm text-muted-foreground">Welcome back, {user.email}</p>
           </div>
@@ -571,45 +581,58 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
         </main>
       </div>
 
-      {/* Right sidebar: fixed overlay, only in the right margin so it never covers main content */}
-      <div
-        className="sidebar-right-zone fixed top-0 right-0 bottom-0 z-40 flex justify-end group min-w-0"
+      {/* Backdrop: close sidebar when clicking outside */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/20 backdrop-blur-[1px]"
+          aria-label="Close menu"
+        />
+      )}
+
+      {/* Left sidebar: opens when menu icon is clicked */}
+      <aside
+        className={`fixed top-0 left-0 bottom-0 z-40 w-64 max-w-[85vw] border-r border-border/60 bg-card shadow-xl flex flex-col transition-[transform] duration-200 ease-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
         aria-label="Navigation"
+        aria-hidden={!sidebarOpen}
       >
-        <div className="w-4 h-full border-l border-border/60 bg-card/95 backdrop-blur-sm flex flex-col transition-[width] duration-200 ease-out overflow-hidden shadow-[0_0_24px_rgba(0,0,0,0.06)] group-hover:shadow-[0_0_32px_rgba(0,0,0,0.08)] [--sidebar-expanded:min(16rem,max(0px,calc((100vw-64rem)/2)))] group-hover:w-[var(--sidebar-expanded)]">
-          <aside className="min-w-0 w-full h-full flex flex-col pt-4 flex-shrink-0">
-            <nav className="p-2 flex flex-col gap-0.5">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setActiveView(item.id);
-                  if (item.id !== 'meetings') setSelectedMeetingId(null);
-                }}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors whitespace-nowrap ${
-                  activeView === item.id
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="mt-auto p-2 border-t border-border/60">
+        <nav className="p-2 flex flex-col gap-0.5 pt-6">
+          {navItems.map((item) => (
             <button
-              onClick={onSignOut}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap"
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setActiveView(item.id);
+                if (item.id !== 'meetings') setSelectedMeetingId(null);
+                setSidebarOpen(false);
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors whitespace-nowrap ${
+                activeView === item.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
             >
-              <LogOut className="w-5 h-5 shrink-0" />
-              <span>Sign Out</span>
+              {item.icon}
+              <span>{item.label}</span>
             </button>
-          </div>
-        </aside>
+          ))}
+        </nav>
+        <div className="mt-auto p-2 border-t border-border/60">
+          <button
+            onClick={() => {
+              setSidebarOpen(false);
+              onSignOut();
+            }}
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap"
+          >
+            <LogOut className="w-5 h-5 shrink-0" />
+            <span>Sign Out</span>
+          </button>
         </div>
-      </div>
+      </aside>
 
       {showUploadModal && (
         <UploadModal

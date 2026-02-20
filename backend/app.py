@@ -17,20 +17,26 @@ from dotenv import load_dotenv
 import bcrypt
 import jwt as pyjwt
 
-# Load .env from backend directory so DEEPGRAM_API_KEY is found regardless of cwd
+# Load .env: Docker injects env from root .env; override=False so we never overwrite those.
 _backend_dir = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(_backend_dir, ".env"))
-load_dotenv()  # Also load from current working directory (e.g. root .env)
+load_dotenv(os.path.join(_backend_dir, ".env"), override=False)
+load_dotenv(override=False)  # Current working directory (e.g. root .env when running locally)
 
 from deepgram_stream import DeepgramStream
 from deepgram_file import transcribe_audio
 from summarize import summarize_transcript
 
-# Startup check: verify You.com API key is loaded
+# Startup: log MongoDB and You.com config (masked)
+_mongo_uri = (os.getenv("MONGODB_URI") or "").strip()
+if _mongo_uri:
+    _preview = "mongodb+srv://***" if "mongodb+srv" in _mongo_uri else "mongodb://***"
+    print(f"[startup] MONGODB_URI: {_preview} (len={len(_mongo_uri)})", flush=True)
+else:
+    print("[startup] MONGODB_URI: NOT SET (set in root .env for Docker or backend/.env for local)", flush=True)
 try:
     from youcom import _get_api_key
     _yk = _get_api_key()
-    print(f"[startup] You.com API key: {'configured' if _yk else 'NOT FOUND (check backend/.env)'}", flush=True)
+    print(f"[startup] You.com API key: {'configured' if _yk else 'NOT FOUND'}", flush=True)
 except Exception as e:
     print(f"[startup] You.com check failed: {e}", flush=True)
 from auth import require_auth
@@ -96,7 +102,7 @@ def _db_error_message(e: Exception, action: str) -> str:
     if "connection" in err or "timeout" in err or "server selection" in err or "nodename nor servname" in err:
         return (
             f"{action}: cannot connect to MongoDB. "
-            "Check MONGODB_URI in backend/.env and ensure MongoDB is running (local or Atlas)."
+            "Check MONGODB_URI in root .env (Docker) or backend/.env (local) and ensure MongoDB is running (local or Atlas)."
         )
     if "authentication" in err or "auth failed" in err:
         return f"{action}: MongoDB authentication failed. Check username/password in MONGODB_URI."

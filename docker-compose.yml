@@ -1,13 +1,15 @@
-# All env vars are defined here with defaults. Override any in a .env file at project root.
+# Env is loaded from the .env file at project root (same directory as this file).
+# Compose injects these into backend/frontend containers; no need to copy .env into backend/ or frontend/.
 # Uses host networking on Linux to avoid bridge/veth "operation not supported" issues.
-# MongoDB: default = localhost:27017; set MONGODB_URI to your Atlas URI to use Atlas instead.
+# MongoDB: default = localhost:27017; set MONGODB_URI in root .env to use Atlas.
 #
 # Run: docker compose up --build
 # Open: http://localhost:5173
 
 services:
   mongo:
-    image: mongo:7
+    # Use 4.4 for CPUs without AVX (MongoDB 5.0+ requires AVX). Or use Atlas: set MONGODB_URI in root .env and run with --scale mongo=0
+    image: mongo:4.4
     network_mode: host
     volumes:
       - mongo_data:/data/db
@@ -25,7 +27,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
       JWT_SECRET: ${JWT_SECRET:-}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
-      YOU_API_KEY: ${YOU_API_KEY:-}
+      YOUCOM_API_KEY: ${YOUCOM_API_KEY:-}
     depends_on:
       - mongo
 
