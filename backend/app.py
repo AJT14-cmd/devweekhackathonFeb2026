@@ -25,20 +25,19 @@ load_dotenv(override=False)  # Current working directory (e.g. root .env when ru
 from deepgram_stream import DeepgramStream
 from deepgram_file import transcribe_audio
 from summarize import summarize_transcript
+from youcom import _get_api_key as youcom_get_api_key
 
-# Startup: log MongoDB and You.com config (masked)
+# Startup: log MongoDB config (masked)
 _mongo_uri = (os.getenv("MONGODB_URI") or "").strip()
 if _mongo_uri:
     _preview = "mongodb+srv://***" if "mongodb+srv" in _mongo_uri else "mongodb://***"
     print(f"[startup] MONGODB_URI: {_preview} (len={len(_mongo_uri)})", flush=True)
 else:
     print("[startup] MONGODB_URI: NOT SET (set in root .env for Docker or backend/.env for local)", flush=True)
-try:
-    from youcom import _get_api_key
-    _yk = _get_api_key()
-    print(f"[startup] You.com API key: {'configured' if _yk else 'NOT FOUND'}", flush=True)
-except Exception as e:
-    print(f"[startup] You.com check failed: {e}", flush=True)
+if youcom_get_api_key():
+    print("[startup] You.com API key: configured", flush=True)
+else:
+    print("[startup] You.com API key: NOT SET (set YOUCOM_API_KEY for AI summarization)", flush=True)
 from auth import require_auth
 from mongodb_client import get_meetings_collection, get_fs, get_users_collection
 
@@ -200,16 +199,8 @@ def auth_login():
 
 @app.route("/health")
 def health():
-    youcom_configured = False
-    try:
-        from youcom import _get_api_key
-        youcom_configured = bool(_get_api_key())
-    except Exception:
-        pass
-    return jsonify({
-        "ok": True,
-        "youcom_configured": youcom_configured,
-    })
+    youcom_configured = bool(youcom_get_api_key())
+    return jsonify({"ok": True, "youcom_configured": youcom_configured})
 
 
 @app.route("/meetings", methods=["GET"])

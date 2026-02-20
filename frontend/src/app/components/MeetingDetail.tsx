@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X, ExternalLink, Loader2, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -38,12 +38,16 @@ interface MeetingDetailProps {
   /** Auth token and API base for download-as-MP3 (optional). */
   authToken?: string;
   apiBaseUrl?: string;
+  /** Called when user clicks "Generate summary". Should call process API and update meeting. */
+  onGenerateSummary?: (meetingId: string) => Promise<void>;
 }
 
-export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange, authToken, apiBaseUrl }: MeetingDetailProps) {
+export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange, authToken, apiBaseUrl, onGenerateSummary }: MeetingDetailProps) {
   const [resolvedDuration, setResolvedDuration] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const onDurationLoaded = useCallback((durationSeconds: number) => {
     setResolvedDuration(formatDuration(durationSeconds));
   }, []);
@@ -70,6 +74,20 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
   const cancelEditingTitle = () => {
     setEditTitleValue('');
     setIsEditingTitle(false);
+  };
+
+  const canGenerateSummary = (meeting.transcript?.trim().length ?? 0) >= 50 || Boolean(meeting.audioUrl);
+  const handleGenerateSummary = async () => {
+    if (!onGenerateSummary || !canGenerateSummary || isGeneratingSummary) return;
+    setSummaryError(null);
+    setIsGeneratingSummary(true);
+    try {
+      await onGenerateSummary(meeting.id);
+    } catch (e) {
+      setSummaryError(e instanceof Error ? e.message : 'Failed to generate summary');
+    } finally {
+      setIsGeneratingSummary(false);
+    }
   };
 
   return (
@@ -159,16 +177,48 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
       {/* Summary: overview + key insights & points in one card */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl flex items-center gap-2 flex-wrap">
-            <FileText className="w-5 h-5 text-primary" />
-            Summary
-            {meeting.summarySource === 'youcom' && (
-              <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-primary/20 text-primary">You.com AI</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-xl flex items-center gap-2 flex-wrap">
+              <FileText className="w-5 h-5 text-primary" />
+              Summary
+              {meeting.summarySource === 'youcom' && (
+                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-primary/15 text-primary">
+                  You.com AI
+                </span>
+              )}
+              {meeting.summarySource === 'fallback' && (
+                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  Local fallback
+                </span>
+              )}
+            </CardTitle>
+            {onGenerateSummary && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateSummary}
+                disabled={!canGenerateSummary || isGeneratingSummary}
+                className="gap-2 shrink-0"
+              >
+                {isGeneratingSummary ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Generate summary
+                  </>
+                )}
+              </Button>
             )}
-            {meeting.summarySource === 'fallback' && (
-              <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Local fallback</span>
-            )}
-          </CardTitle>
+          </div>
+          {summaryError && (
+            <p className="text-sm text-destructive mt-1" role="alert">
+              {summaryError}
+            </p>
+          )}
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Overview paragraph */}
@@ -177,11 +227,11 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
               {meeting.summary || ''}
             </p>
           </div>
-          {/* Research & citations from You.com (live web data) */}
+          {/* Research & citations */}
           {meeting.researchInsights && meeting.researchInsights.length > 0 && (
             <div>
+              <p className="text-xs text-muted-foreground mb-1">Live insights from You.com Search</p>
               <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Research & citations</h4>
-              <p className="text-xs text-muted-foreground mb-2">Live insights from You.com Search</p>
               <ul className="space-y-2">
                 {meeting.researchInsights.map((r, index) => (
                   <li key={index} className="flex gap-3 text-card-foreground">

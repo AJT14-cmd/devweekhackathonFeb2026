@@ -256,6 +256,17 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
     }
   };
 
+  const handleGenerateSummary = async (meetingId: string) => {
+    const response = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}/process`, token, { method: 'POST' });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({ error: 'Processing failed' }));
+      const msg = data.detail ? `${data.error || 'Processing failed'}: ${data.detail}` : (data.error || 'Processing failed');
+      throw new Error(msg);
+    }
+    const { meeting: updated } = await response.json();
+    setMeetings(prev => prev.map(m => (m.id === updated.id ? updated : m)));
+  };
+
   const handleSelectMeeting = async (meetingId: string) => {
     try {
       const response = await authFetch(`${API_BASE_URL || ''}/meetings/${meetingId}`, token);
@@ -329,6 +340,7 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
             }}
               onTitleChange={(newTitle) => handleMeetingTitleChange(selectedMeeting.id, newTitle)}
               onFileNameChange={(newFileName) => handleMeetingFileNameChange(selectedMeeting.id, newFileName)}
+              onGenerateSummary={handleGenerateSummary}
               authToken={token}
               apiBaseUrl={API_BASE_URL}
             />
