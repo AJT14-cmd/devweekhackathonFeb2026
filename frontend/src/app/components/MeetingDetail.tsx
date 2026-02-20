@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X, ExternalLink, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Hash, FileText, CheckCircle, ListTodo, Pencil, Check, X, ExternalLink, Loader2, Sparkles, FileDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { AudioPlayer } from './AudioPlayer';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -48,6 +48,8 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
   const [editTitleValue, setEditTitleValue] = useState('');
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const onDurationLoaded = useCallback((durationSeconds: number) => {
     setResolvedDuration(formatDuration(durationSeconds));
   }, []);
@@ -74,6 +76,33 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
   const cancelEditingTitle = () => {
     setEditTitleValue('');
     setIsEditingTitle(false);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!apiBaseUrl || !authToken) return;
+    setPdfError(null);
+    setIsDownloadingPdf(true);
+    try {
+      const res = await fetch(`${apiBaseUrl}/meetings/${meeting.id}/report`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.status === 503) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'PDF report generation is not available. Configure Foxit credentials on the server.');
+      }
+      if (!res.ok) throw new Error(res.statusText);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (meeting.title?.replace(/[^\w\s\-.]/g, '') || 'meeting_report').slice(0, 200) + '.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setPdfError(e instanceof Error ? e.message : 'Failed to download PDF report');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   };
 
   const canGenerateSummary = (meeting.transcript?.trim().length ?? 0) >= 50 || Boolean(meeting.audioUrl);
@@ -170,6 +199,34 @@ export function MeetingDetail({ meeting, onBack, onTitleChange, onFileNameChange
               apiBaseUrl={apiBaseUrl}
               onFileNameChange={onFileNameChange}
             />
+          )}
+          {authToken && apiBaseUrl && (
+            <div className="mt-4 flex flex-col gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadPdf}
+                disabled={isDownloadingPdf}
+                className="gap-2 w-fit"
+              >
+                {isDownloadingPdf ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating PDF…
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="w-4 h-4" />
+                    Download Meeting Report (PDF)
+                  </>
+                )}
+              </Button>
+              {pdfError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {pdfError}
+                </p>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

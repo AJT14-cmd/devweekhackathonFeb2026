@@ -40,11 +40,16 @@ else:
     print("[startup] You.com API key: NOT SET (set YOUCOM_API_KEY for AI summarization)", flush=True)
 from auth import require_auth
 from mongodb_client import get_meetings_collection, get_fs, get_users_collection
+from foxit_report import _get_creds as foxit_get_creds, generate_meeting_report_pdf
+
+def _foxit_configured() -> bool:
+    cid, _ = foxit_get_creds()
+    return cid is not None
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
 CORS(app)  # Allow browser at localhost:5173 to call API at localhost:5000
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", manage_session=False)
 
 # Per-connection Deepgram stream (keyed by session id)
 streams = {}
@@ -200,7 +205,8 @@ def auth_login():
 @app.route("/health")
 def health():
     youcom_configured = bool(youcom_get_api_key())
-    return jsonify({"ok": True, "youcom_configured": youcom_configured})
+    foxit_configured = _foxit_configured()
+    return jsonify({"ok": True, "youcom_configured": youcom_configured, "foxit_configured": foxit_configured})
 
 
 @app.route("/meetings", methods=["GET"])
@@ -440,6 +446,33 @@ def get_meeting(meeting_id):
         return jsonify({"error": "Failed to fetch meeting"}), 500
 
 
+@app.route("/meetings/<meeting_id>/report")
+@require_auth
+def get_meeting_report(meeting_id):
+    """Generate and download PDF report via Foxit Document Generation + PDF Services."""
+    if not _foxit_configured():
+        return jsonify({"error": "PDF report generation is not configured. Set FOXIT_CLIENT_ID and FOXIT_CLIENT_SECRET."}), 503
+    user_id = g.user_id
+    try:
+        doc = get_meetings_collection().find_one({"id": meeting_id, "user_id": user_id})
+        if not doc:
+            return jsonify({"error": "Not found"}), 404
+        pdf_bytes = generate_meeting_report_pdf(doc)
+        if not pdf_bytes:
+            return jsonify({"error": "Failed to generate PDF report. Check server logs."}), 503
+        title = (doc.get("title") or "").strip() or "meeting_report"
+        safe_name = _safe_filename(title, "meeting_report")
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"{safe_name}.pdf",
+        )
+    except Exception as e:
+        print(f"[get_meeting_report] error: {e}")
+        return jsonify({"error": "Failed to generate report"}), 500
+
+
 @app.route("/meetings/<meeting_id>", methods=["PATCH"])
 @require_auth
 def update_meeting(meeting_id):
@@ -534,6 +567,8 @@ def process_meeting(meeting_id):
         summary = (doc.get("summary") or "").strip()
         audio_file_id = doc.get("audio_file_id")
         needs_transcription = audio_file_id and (not transcript or transcript == TRANSCRIPT_STUB)
+        duration_form = doc.get("duration") or "0:00"
+        duration_seconds_val = None
 
         if needs_transcription:
             _process_log(f"Meeting has audio_file_id, fetching from GridFS...")
@@ -543,13 +578,19 @@ def process_meeting(meeting_id):
                 audio_bytes = out.read()
                 content_type = (out.content_type or "audio/webm").split(";")[0].strip()
                 _process_log(f"Loaded audio: {len(audio_bytes)} bytes, content_type={content_type}")
-                transcript = transcribe_audio(audio_bytes, content_type)
+                transcript, duration_sec = transcribe_audio(audio_bytes, content_type)
                 if transcript:
                     _process_log(f"Transcription done: {len(transcript)} chars")
                 else:
                     _process_log("Transcription returned empty; keeping stub")
                     transcript = TRANSCRIPT_STUB
                     summary = SUMMARY_STUB
+                # Format duration as M:SS and store seconds for PDF report
+                if duration_sec is not None and duration_sec > 0:
+                    m = int(duration_sec // 60)
+                    s = int(duration_sec % 60)
+                    duration_form = f"{m}:{s:02d}"
+                    duration_seconds_val = duration_sec
             except ValueError as e:
                 _process_log(f"Deepgram not configured: {e}")
                 transcript = transcript or TRANSCRIPT_STUB
@@ -601,7 +642,10 @@ def process_meeting(meeting_id):
             "action_items": action_items,
             "summary_source": summary_source,
             "word_count": len(transcript.split()),
+            "duration": duration_form,
         }
+        if duration_seconds_val is not None:
+            update_data["duration_seconds"] = duration_seconds_val
         get_meetings_collection().update_one(
             {"id": meeting_id, "user_id": user_id},
             {"$set": update_data},

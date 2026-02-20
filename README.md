@@ -1,4 +1,4 @@
-# AI Meeting Transcription
+# Insightly
 
 Real-time meeting transcription: browser microphone → Flask → Deepgram WebSocket → live transcript in the React UI. Recordings and users are stored in MongoDB; audio files in GridFS. Auth is JWT-based (backend-issued).
 
@@ -40,6 +40,8 @@ docker compose up --build backend frontend
 | `SECRET_KEY` | `dev-secret-change-in-production` | Flask/JWT secret. |
 | `JWT_SECRET` | (empty) | JWT signing; uses SECRET_KEY when empty. |
 | `DEEPGRAM_API_KEY` | (empty) | Live transcription; set to enable mic. |
+| `FOXIT_CLIENT_ID` | (empty) | Foxit API client ID for PDF report generation. |
+| `FOXIT_CLIENT_SECRET` | (empty) | Foxit API client secret for PDF report generation. |
 | `VITE_API_URL` | `http://localhost:5000` | Backend URL (browser). |
 | `VITE_SOCKET_URL` | `http://localhost:5000` | Socket.IO URL (browser). |
 
@@ -86,7 +88,9 @@ devweekhackathonFeb2026/
 │   ├── app.py              # Flask-SocketIO, REST API (meetings, auth), GridFS
 │   ├── auth.py             # JWT verification
 │   ├── deepgram_stream.py  # WebSocket to Deepgram, live transcript
+│   ├── foxit_report.py     # Foxit Document Gen + PDF Services for meeting report PDFs
 │   ├── mongodb_client.py   # MongoDB + GridFS
+│   ├── templates/          # Word template for Foxit PDF report (meeting_report.docx)
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   └── docker-entrypoint.sh
@@ -113,11 +117,20 @@ devweekhackathonFeb2026/
 - **Microphone permission denied** — Use HTTPS or `localhost`; some browsers block `getUserMedia` on plain HTTP.
 - **404 on /auth/login or /auth/register** — With Vite dev, ensure `vite.config.js` proxies `/auth` (and `/meetings`, etc.) to the backend.
 - **MP3 download fails** — Backend needs ffmpeg installed (Docker image includes it).
+- **PDF report download fails or shows 503** — Set `FOXIT_CLIENT_ID` and `FOXIT_CLIENT_SECRET` in `.env` (or `backend/.env`). Get credentials from the [Foxit Developer Portal](https://developers.foxit.com/).
+
+---
+
+## Foxit PDF Report
+
+Meeting reports can be exported as polished PDFs using **Foxit Document Generation** and **Foxit PDF Services** APIs. When viewing a meeting, click **Download Meeting Report (PDF)** to generate a PDF containing the summary, key insights, decisions, action items, and a transcript excerpt.
+
+**Setup:** Add `FOXIT_CLIENT_ID` and `FOXIT_CLIENT_SECRET` to your `.env` (or `backend/.env`). Create an account and obtain credentials from the [Foxit Developer Portal](https://developers.foxit.com/). The health endpoint (`GET /health`) returns `foxit_configured: true` when credentials are set.
 
 ---
 
 ## Tech summary
 
-- **Frontend:** React (Vite), Socket.IO client, Web Audio API, sign up / log in (backend JWT), meetings list and detail, audio playback, download as MP3.
-- **Backend:** Flask, Flask-SocketIO, MongoDB (meetings + users), GridFS (audio), JWT auth, Deepgram WebSocket for live transcription. Recordings stored as WebM; MP3 conversion on download via ffmpeg.
+- **Frontend:** React (Vite), Socket.IO client, Web Audio API, sign up / log in (backend JWT), meetings list and detail, audio playback, download as MP3, download meeting report as PDF.
+- **Backend:** Flask, Flask-SocketIO, MongoDB (meetings + users), GridFS (audio), JWT auth, Deepgram WebSocket for live transcription, Foxit Document Generation + PDF Services for meeting report PDFs. Recordings stored as WebM; MP3 conversion on download via ffmpeg.
 - **Auth:** Backend issues JWTs on register/login; frontend sends Bearer token; no Supabase.

@@ -321,9 +321,14 @@ function AuthenticatedApp({ user, token, onSignOut }: AuthAppProps) {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <div className="flex items-center gap-2">
-                <Mic2 className="w-5 h-5 text-primary shrink-0" />
-                <span className="font-semibold text-foreground">Meeting Insights</span>
+              <div className="flex items-center gap-2.5">
+                <img
+                  src="/logo-icon.png"
+                  alt=""
+                  className="h-14 w-14 shrink-0 object-contain drop-shadow-sm"
+                  aria-hidden
+                />
+                <span className="font-semibold text-foreground/95 text-lg">Insightly</span>
               </div>
             </div>
             <p className="text-sm text-muted-foreground">Welcome back, {user.email}</p>

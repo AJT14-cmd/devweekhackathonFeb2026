@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Mic2, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -39,15 +39,18 @@ export function SignIn() {
       <div className="w-full max-w-sm space-y-6">
         {/* Logo / title */}
         <div className="flex flex-col items-center gap-3">
-          <div className="w-14 h-14 bg-primary rounded-full flex items-center justify-center">
-            <Mic2 className="w-7 h-7 text-primary-foreground" />
+          <div className="flex items-center justify-center gap-3">
+            <img
+              src="/logo-icon.png"
+              alt=""
+              className="h-20 w-20 shrink-0 object-contain drop-shadow-sm"
+              aria-hidden
+            />
+            <span className="text-3xl font-bold tracking-tight text-foreground/95">Insightly</span>
           </div>
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-foreground">Meeting Insights</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {isSignUp ? 'Create an account to get started' : 'Sign in to continue'}
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground text-center">
+            {isSignUp ? 'Create an account to get started' : 'Sign in to continue'}
+          </p>
         </div>
 
         {/* Form card */}

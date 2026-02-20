@@ -1,33 +1,39 @@
-# Env is loaded from the .env file at project root (same directory as this file).
-# Compose injects these into backend/frontend containers; no need to copy .env into backend/ or frontend/.
-# Uses host networking on Linux to avoid bridge/veth "operation not supported" issues.
-# MongoDB: default = localhost:27017; set MONGODB_URI in root .env to use Atlas.
+# Cross-platform Docker Compose (works on Linux, Windows, and macOS)
+# All env vars have defaults. Override any by creating a .env file at project root.
 #
 # Run: docker compose up --build
 # Open: http://localhost:5173
+#
+# MongoDB: uses local container by default. To use Atlas instead:
+#   1. Create .env with MONGODB_URI=mongodb+srv://...
+#   2. Run: docker compose up --build --scale mongo=0
 
 services:
   mongo:
-    # Use 4.4 for CPUs without AVX (MongoDB 5.0+ requires AVX). Or use Atlas: set MONGODB_URI in root .env and run with --scale mongo=0
-    image: mongo:4.4
-    network_mode: host
+    image: mongo:7
+    ports:
+      - "27017:27017"
     volumes:
       - mongo_data:/data/db
-    # Omit when using Atlas: run with --scale mongo=0 and set MONGODB_URI in .env
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      network: host
-    network_mode: host
+    ports:
+      - "5000:5000"
     environment:
-      MONGODB_URI: ${MONGODB_URI:-mongodb://127.0.0.1:27017}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
       JWT_SECRET: ${JWT_SECRET:-}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
       YOUCOM_API_KEY: ${YOUCOM_API_KEY:-}
+      FOXIT_CLIENT_ID: ${FOXIT_CLIENT_ID:-}
+      FOXIT_CLIENT_SECRET: ${FOXIT_CLIENT_SECRET:-}
+      FOXIT_PDF_SERVICES_CLIENT_ID: ${FOXIT_PDF_SERVICES_CLIENT_ID:-}
+      FOXIT_PDF_SERVICES_CLIENT_SECRET: ${FOXIT_PDF_SERVICES_CLIENT_SECRET:-}
+      FOXIT_HOST: ${FOXIT_HOST:-https://na1.fusion.foxit.com}
     depends_on:
       - mongo
 
@@ -35,9 +41,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      network: host
-    network_mode: host
+    ports:
+      - "5173:5173"
     environment:
+      # VITE_PROXY_TARGET: where Vite dev server proxies API requests (container-to-container)
+      VITE_PROXY_TARGET: http://backend:5000
+      # VITE_API_URL/VITE_SOCKET_URL: used by browser JS (browser-to-host)
       VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
       VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:5000}
     depends_on:
